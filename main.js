@@ -2,99 +2,7 @@ var game = new Phaser.Game(960, 540, Phaser.AUTO, 'game', { preload: preload, cr
 
 var SpeedManager = SpeedManager || {};
 SpeedManager = {
-    noteUseTime:[
-        2.7,
-        2.67,
-        2.64,
-        2.61,
-        2.58,
-        2.55,
-        2.52,
-        2.49,
-        2.46,
-        2.43,
-        2.4,
-        2.37,
-        2.34,
-        2.31,
-        2.28,
-        2.25,
-        2.22,
-        2.19,
-        2.16,
-        2.13,
-        2.1,
-        2.07,
-        2.04,
-        2.01,
-        1.98,
-        1.95,
-        1.92,
-        1.89,
-        1.86,
-        1.83,
-        1.8,
-        1.78,
-        1.76,
-        1.74,
-        1.72,
-        1.7,
-        1.68,
-        1.66,
-        1.64,
-        1.62,
-        1.6,
-        1.58,
-        1.56,
-        1.54,
-        1.52,
-        1.5,
-        1.48,
-        1.46,
-        1.44,
-        1.42,
-        1.4,
-        1.38,
-        1.36,
-        1.34,
-        1.32,
-        1.3,
-        1.28,
-        1.26,
-        1.24,
-        1.22,
-        1.2,
-        1.18,
-        1.16,
-        1.14,
-        1.12,
-        1.1,
-        1.08,
-        1.06,
-        1.04,
-        1.02,
-        1,
-        0.98,
-        0.96,
-        0.94,
-        0.92,
-        0.9,
-        0.88,
-        0.86,
-        0.84,
-        0.82,
-        0.8,
-        0.78,
-        0.76,
-        0.74,
-        0.72,
-        0.7,
-        0.66,
-        0.62,
-        0.58,
-        0.54,
-        0.5
-    ],
+    noteUseTime:[2.7,2.67,2.64,2.61,2.58,2.55,2.52,2.49,2.46,2.43,2.4,2.37,2.34,2.31,2.28,2.25,2.22,2.19,2.16,2.13,2.1,2.07,2.04,2.01,1.98,1.95,1.92,1.89,1.86,1.83,1.8,1.78,1.76,1.74,1.72,1.7,1.68,1.66,1.64,1.62,1.6,1.58,1.56,1.54,1.52,1.5,1.48,1.46,1.44,1.42,1.4,1.38,1.36,1.34,1.32,1.3,1.28,1.26,1.24,1.22,1.2,1.18,1.16,1.14,1.12,1.1,1.08,1.06,1.04,1.02,1,0.98,0.96,0.94,0.92,0.9,0.88,0.86,0.84,0.82,0.8,0.78,0.76,0.74,0.72,0.7,0.66,0.62,0.58,0.54,0.5],
     getNoteUseTime:function (speed){
         return this.noteUseTime[speed*10-10]*1000;
     }
@@ -162,6 +70,7 @@ var Note = function(time,startPos,finishPos,noteType,longType){
     
     this.isStarted = false;
     this.isThrough = false;
+    this.isDestroy = false;
     
     this.sprite = game.add.sprite(-500, -500, typeList[longType==2&&noteType==0?1:noteType]);
     this.sprite.visible = false;
@@ -223,33 +132,7 @@ Judge.prototype = {
         }
     }
 };
-/*
-var ComboAnime = function (sprite){
-    this.frame = 0;
-    this.duration = 16;
-    this.isStart = false;
-    this.sprite = sprite;
-};
 
-ComboAnime.prototype = {
-    play:function(){
-        this.frame = 0;
-        this.isStart = true;
-    },
-    update:function(){
-        if(this.isStart){
-            this.animation();
-            this.frame++; 
-            if(this.frame==this.duration){
-                this.isStart = false;
-            }
-        }
-    },
-    animation:function(){
-        this.sprite.scale.set(Math.sin(this.frame/16*180 * (Math.PI / 180))*0.2+0.8);
-    }
-};
-*/
 var ComboManager = {
     comboBuffer:0,
     digitWidth:66,
@@ -331,8 +214,12 @@ var comboSprite;
 var comboText;
 var comboAnime;
 
+var pixitest;
 
 function create() {
+    
+    console.log(PIXI);
+    
     music = game.add.audio('music');
     tapSE = game.add.audio('tapSE');
     tapSE.allowMultiple = true;
@@ -346,9 +233,12 @@ function create() {
     comboTexture = game.add.renderTexture(264, 140);
     comboSprite = game.add.sprite(800, 130, comboTexture);
     comboSprite.anchor.set(0.5);
+    /*
+    pixitest = new PIXI.Sprite();
     
+    game.add.existing(pixitest);
+    */
     judge = new Judge();
-    //comboAnime = new ComboAnime(comboSprite);
     var longBuf = [false,false,false,false,false];
     var beatmap = game.cache.getJSON('beatmap');
     for(var i=0;i<beatmap.notes.length;i++){
@@ -367,7 +257,7 @@ function create() {
     music.play();
     game.input.onDown.add(onDown, this);
     game.input.addMoveCallback(onMove, this);
-    game.input.onUp.add(onUp, this);
+    game.input.onUp.add(onUp, this);  
 
 }
 
@@ -395,9 +285,17 @@ function update() {
             e.update(music.currentTime); 
         });
     }
+    /*
+    for(var i=0;i<5;i++){
+
+        for(var j=0;j<notes[i].length;j++){
+            if(notes[i][j].longType==1){
+            }
+        }
+    }
+    */
     judge.update();
     ComboManager.update(combo);
-    //comboAnime.update();
 }
 
 function render() {
@@ -418,7 +316,6 @@ function onDown() {
                 //perfect
                 tapSE.play();
                 judge.play(0);
-                //comboAnime.play();
                 if(inputLane[0].longType==1)LNflag[lane] = true;
                 combo++;
                 inputLane[0].sprite.destroy();
@@ -427,7 +324,6 @@ function onDown() {
                 //great
                 tapSE.play();
                 judge.play(1);
-                //comboAnime.play();
                 if(inputLane[0].longType==1)LNflag[lane] = true;
                 combo++;
                 inputLane[0].sprite.destroy();
@@ -476,7 +372,6 @@ function onMove(e) {
                 if(inputLane[0].longType==2)LNflag[lane] = false;
                 flickSE.play();
                 judge.play(0);
-                //comboAnime.play();
                 combo++;
                 inputLane[0].sprite.destroy();
                 inputLane.shift();
@@ -499,7 +394,6 @@ function onUp() {
                 //perfect
                 tapSE.play();
                 judge.play(0);
-                //comboAnime.play();
                 LNflag[lane] = false;
                 combo++;
                 inputLane[0].sprite.destroy();
@@ -508,7 +402,6 @@ function onUp() {
                 //great
                 tapSE.play();
                 judge.play(1);
-                //comboAnime.play();
                 LNflag[lane] = false;
                 combo++;
                 inputLane[0].sprite.destroy();
