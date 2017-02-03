@@ -1,5 +1,4 @@
 ///
-
 var SpeedManager = {
     noteUseTime:[2.7,2.67,2.64,2.61,2.58,2.55,2.52,2.49,2.46,2.43,2.4,2.37,2.34,2.31,2.28,2.25,2.22,2.19,2.16,2.13,2.1,2.07,2.04,2.01,1.98,1.95,1.92,1.89,1.86,1.83,1.8,1.78,1.76,1.74,1.72,1.7,1.68,1.66,1.64,1.62,1.6,1.58,1.56,1.54,1.52,1.5,1.48,1.46,1.44,1.42,1.4,1.38,1.36,1.34,1.32,1.3,1.28,1.26,1.24,1.22,1.2,1.18,1.16,1.14,1.12,1.1,1.08,1.06,1.04,1.02,1,0.98,0.96,0.94,0.92,0.9,0.88,0.86,0.84,0.82,0.8,0.78,0.76,0.74,0.72,0.7,0.66,0.62,0.58,0.54,0.5],
     getNoteUseTime:function (speed){
@@ -69,16 +68,18 @@ var Note = function(time,startPos,finishPos,noteType,longType,texture){
     this.isDestroy = false;
 
     this.sprite = new PIXI.Sprite(texture);
-    app.stage.addChild(this.sprite);
     this.sprite.visible = false;
     this.sprite.anchor.set(anchorList[noteType],0.5);
+    this.t = 0;
 };
 
 Note.prototype = {
     setPosition:function (t){
+        this.t = t;
         this.sprite.x = NoteManager.getNotePositionX(t,this.startPos,this.finishPos);
         this.sprite.y = NoteManager.getNotePositionY(t);
-        this.sprite.scale.set(85/256*NoteManager.getScale(t));
+        this.scale = NoteManager.getScale(t);
+        this.sprite.scale.set(85/256*this.scale);
     },
     update:function (time){
         var t = NoteManager.getT(time-this.time);
@@ -92,8 +93,73 @@ Note.prototype = {
         if(0 < t && t < 1.5){
             this.setPosition(t);   
         }
+    },
+    destroy:function(){
+        app.stage.removeChild(this.sprite);
+        this.isDestroy = true;
+    },
+    addChild:function(){
+        app.stage.addChild(this.sprite);
     }
 };
+
+var LONGMESH_DIVISION = 30;
+
+var LongMesh = function(beginNote,endNote,texture){
+    var verts = new Float32Array((LONGMESH_DIVISION+1)*4);
+    var uvs = new Float32Array((LONGMESH_DIVISION+1)*4);
+    var triangles = new Uint16Array(LONGMESH_DIVISION*6);
+    for(var i=0;i<LONGMESH_DIVISION*2;i++){
+        triangles[i*3] = i;
+        triangles[i*3+1] = i+1;
+        triangles[i*3+2] = i+2;
+    }
+    this.mesh = new PIXI.mesh.Mesh(texture,verts, uvs, triangles, PIXI.mesh.Mesh.DRAW_MODES.TRIANGLES);
+    this.beginNote = beginNote;
+    this.endNote = endNote;
+}
+
+LongMesh.prototype = {
+    setVertex:function(){
+        var beginT = this.beginNote.isDestroy?1:this.beginNote.t;
+        var endT = this.endNote.t;
+        var t = 0;
+        for(var j=0;j<LONGMESH_DIVISION+1;j++){
+            var clipT = Math.min(Math.max(endT,t),beginT);
+            var x = NoteManager.getNotePositionX(clipT,this.beginNote.startPos,this.beginNote.finishPos);
+            var y = NoteManager.getNotePositionY(clipT);
+            var width = 85*NoteManager.getScale(clipT);
+
+            this.mesh.vertices[j*4] = x-width/2;
+            this.mesh.vertices[j*4+1] = y;
+
+            this.mesh.vertices[j*4+2] = x+width/2;
+            this.mesh.vertices[j*4+3] = y;
+
+            t+=1/LONGMESH_DIVISION;
+        }
+    },
+    update:function(){
+        if(this.beginNote.isStarted){
+            this.setVertex();
+        }
+    },
+    destroy:function(){
+        app.stage.removeChild(this.mesh);
+    },
+    addChild:function(){
+        app.stage.addChild(this.mesh);
+    }
+}
+
+/*
+var FlickMesh = function(beginNote,endNote){
+    
+}
+*/
+
+
+
 /*
 var Judge = function (){
     this.frame = 0;
@@ -206,9 +272,10 @@ PIXI.loader
     .add('tex_flick0', 'asset/image/Lflick.png')
     .add('tex_flick1', 'asset/image/Rflick.png')
     .add('tex_bg', 'asset/image/release_bg.png')
-    .add('audio_music', "music/jttf.mp3")
+    .add('tex_none', 'asset/image/none.bmp')
     .add('audio_perfect', "asset/sound/perfect.mp3")
     .add('audio_flick', "asset/sound/flick.mp3")
+    .add('audio_music', "music/jttf.mp3")
     .add('json_map', "beatmap/jttf.json")
     .load(onAssetsLoaded);
 
@@ -233,7 +300,12 @@ game.load.json('beatmap', 'beatmap/jttf.json');
 var music;
 var tapSE;
 var flickSE;
-var notes = [[],[],[],[],[]];
+
+var noteList = [[],[],[],[],[]];
+var longMeshList = [];
+var flickMeshList = [];
+
+
 var comboText;
 var combo = 0;
 var judge;
@@ -277,9 +349,30 @@ function onAssetsLoaded(loader, res)
                 lnType = 2;
             }
         }
-        notes[beatmap.notes[i].finish-1].push(new Note(beatmap.notes[i].time*1000+beatmap.offset*1000,beatmap.notes[i].start,beatmap.notes[i].finish,beatmap.notes[i].type,lnType,res[typeList[lnType==2&&beatmap.notes[i].type==0?1:beatmap.notes[i].type]].texture));   
+        noteList[beatmap.notes[i].finish-1].push(new Note(beatmap.notes[i].time*1000+beatmap.offset*1000,beatmap.notes[i].start,beatmap.notes[i].finish,beatmap.notes[i].type,lnType,res[typeList[lnType==2&&beatmap.notes[i].type==0?1:beatmap.notes[i].type]].texture));   
     }
-  
+    //
+    var beginNote;
+    for(var i=5;i--;){
+        for(var j=0;j<noteList[i].length;j++){
+            if(noteList[i][j].longType==1){
+                beginNote = noteList[i][j];
+            }else if(noteList[i][j].longType==2){
+                longMeshList.push(new LongMesh(beginNote,noteList[i][j],res['tex_none'].texture))   
+            }
+        }
+    }
+    
+    //メッシュ追加
+    for(var i=longMeshList.length;i--;){
+        longMeshList[i].addChild();
+    }
+    //ノート追加
+    for(var i=5;i--;){
+        for(var j=noteList[i].length;j--;){
+            noteList[i][j].addChild();
+        }
+    }
     //オーディオのデコード
     new WebAudioDecoder()
         .add('audio_music',res['audio_music'].data)
@@ -318,26 +411,32 @@ var bufx = {};
 
 function update(){
     for(var i=0;i<5;i++){
-        if(notes[i].length!=0){
-            if(notes[i][0].time-music.getTime()<-JadgeTime.bad){
+        if(noteList[i].length!=0){
+            if(noteList[i][0].time-music.getTime()<-JadgeTime.bad){
                 //miss
-                if(notes[i][0].longType==1){
-                    //notes[i][0].sprite.destroy();
-                    app.stage.removeChild(notes[i][0].sprite);
-                    notes[i].shift();
-                }else if(notes[i][0].longType==2){
+                if(noteList[i][0].longType==1){
+                    noteList[i][0].destroy();
+                    noteList[i].shift();
+                }else if(noteList[i][0].longType==2){
                     LNflag[i] = false;
                 }
                 combo = 0;
                 //judge.play(4);
-                //notes[i][0].sprite.destroy();
-                app.stage.removeChild(notes[i][0].sprite);
-                notes[i].shift();
+                noteList[i][0].destroy();
+                noteList[i].shift();
             }
         }
-        notes[i].forEach(function(e,i,array){
-            e.update(music.getTime()); 
-        });
+        for(var j=noteList[i].length;j--;){
+            noteList[i][j].update(music.getTime());
+        }
+    }
+    
+    for(var i=longMeshList.length;i--;){
+        longMeshList[i].update();
+        if(longMeshList[i].endNote.isDestroy){
+            longMeshList[i].destroy();
+            longMeshList.slice(i,1);
+        }
     }
     
     //judge.update();
@@ -356,7 +455,7 @@ function onDown(e){
         var id = touch.identifier;
         bufx[id] = x;
         var lane = InputManager.XtoLane(x);
-        var inputLane = notes[lane];
+        var inputLane = noteList[lane];
         LNMemory[id] = lane;
         if(inputLane.length!=0){
             if(inputLane[0].noteType<2&&inputLane[0].longType!=2){
@@ -367,8 +466,7 @@ function onDown(e){
                     //judge.play(0);
                     if(inputLane[0].longType==1)LNflag[lane] = true;
                     combo++;
-                    //inputLane[0].sprite.destroy();
-                    app.stage.removeChild(inputLane[0].sprite);
+                    inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.great){
                     //great
@@ -376,8 +474,7 @@ function onDown(e){
                     //judge.play(1);
                     if(inputLane[0].longType==1)LNflag[lane] = true;
                     combo++;
-                    //inputLane[0].sprite.destroy();
-                    app.stage.removeChild(inputLane[0].sprite);
+                    inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.good){
                     //good
@@ -385,8 +482,7 @@ function onDown(e){
                     //judge.play(2);
                     if(inputLane[0].longType==1)LNflag[lane] = true;
                     combo = 0;
-                    //inputLane[0].sprite.destroy();
-                    app.stage.removeChild(inputLane[0].sprite);
+                    inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.bad){
                     //bad
@@ -394,8 +490,7 @@ function onDown(e){
                     //judge.play(3);
                     if(inputLane[0].longType==1)LNflag[lane] = true;
                     combo = 0;
-                    //inputLane[0].sprite.destroy();
-                    app.stage.removeChild(inputLane[0].sprite);
+                    inputLane[0].destroy();
                     inputLane.shift();
                 }   
             }
@@ -411,7 +506,7 @@ function onUp(e){
         var id = touch.identifier;
         bufx[id] = x;
         var lane = LNMemory[id];
-        var inputLane = notes[lane];
+        var inputLane = noteList[lane];
         if(inputLane.length!=0){
             if(inputLane[0].longType==2&&inputLane[0].noteType<2){
                 var diff = Math.abs(inputLane[0].time-music.getTime());
@@ -421,8 +516,7 @@ function onUp(e){
                     //judge.play(0);
                     LNflag[lane] = false;
                     combo++;
-                    //inputLane[0].sprite.destroy();
-                    app.stage.removeChild(inputLane[0].sprite);
+                    inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.great){
                     //great
@@ -430,8 +524,7 @@ function onUp(e){
                     //judge.play(1);
                     LNflag[lane] = false;
                     combo++;
-                    //inputLane[0].sprite.destroy();
-                    app.stage.removeChild(inputLane[0].sprite);
+                    inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.good){
                     //good
@@ -439,8 +532,7 @@ function onUp(e){
                     //judge.play(2);
                     LNflag[lane] = false;
                     combo = 0;
-                    //inputLane[0].sprite.destroy();
-                    app.stage.removeChild(inputLane[0].sprite);
+                    inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.bad){
                     //bad
@@ -448,8 +540,7 @@ function onUp(e){
                     //judge.play(3);
                     LNflag[lane] = false;
                     combo = 0;
-                    //inputLane[0].sprite.destroy();
-                    app.stage.removeChild(inputLane[0].sprite);
+                    inputLane[0].destroy();
                     inputLane.shift();
                 }   
             }
@@ -458,8 +549,7 @@ function onUp(e){
             combo = 0;
             //judge.play(4);
             LNflag[lane] = false;
-            //inputLane[0].sprite.destroy();
-            app.stage.removeChild(inputLane[0].sprite);
+            inputLane[0].destroy();
             inputLane.shift();
         }
     }
@@ -482,7 +572,7 @@ function onMove(e){
         }
 
         var lane = InputManager.XtoLane(x);
-        var inputLane = notes[lane];
+        var inputLane = noteList[lane];
         if(inputLane.length!=0){
             if(inputLane[0].noteType==dir){
                 var diff = Math.abs(inputLane[0].time-music.getTime());
@@ -491,8 +581,7 @@ function onMove(e){
                     flickSE.play();
                     //judge.play(0);
                     combo++;
-                    //inputLane[0].sprite.destroy();
-                    app.stage.removeChild(inputLane[0].sprite);
+                    inputLane[0].destroy();
                     inputLane.shift();
                 }   
             }
