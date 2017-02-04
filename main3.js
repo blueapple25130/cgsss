@@ -55,22 +55,25 @@ var InputManager = {
     }
 };
 
-var Note = function(time,startPos,finishPos,noteType,longType,texture){
+var Note = function(time,startPos,finishPos,noteType,longType,groupID,texture){
     var anchorList = [0.5,0.5,0.6,0.4];
     this.time = time;
     this.startPos = startPos;
     this.finishPos = finishPos;
     this.noteType = noteType;
     this.longType = longType;
+    this.groupID = groupID;
 
     this.isStarted = false;
-    this.isThrough = false;
     this.isDestroy = false;
 
     this.sprite = new PIXI.Sprite(texture);
     this.sprite.visible = false;
     this.sprite.anchor.set(anchorList[noteType],0.5);
+    this.sprite.x = NoteManager.getNotePositionX(0,this.startPos,this.finishPos);
+    this.sprite.y = NoteManager.getNotePositionY(0);
     this.t = 0;
+    this.scale = 0;
 };
 
 Note.prototype = {
@@ -86,11 +89,8 @@ Note.prototype = {
         if (!this.isStarted && t > 0){
             this.sprite.visible = true;
             this.isStarted = true;
-        }else if(!this.isThrough && t >= 1.5){
-            this.sprite.visible = false;
-            this.isThrough = true;
         }
-        if(0 < t && t < 1.5){
+        if(this.isStarted){
             this.setPosition(t);   
         }
     },
@@ -113,8 +113,9 @@ var LongMesh = function(beginNote,endNote,texture){
         triangles[i*3] = i;
         triangles[i*3+1] = i+1;
         triangles[i*3+2] = i+2;
-    }
+    }    
     this.mesh = new PIXI.mesh.Mesh(texture,verts, uvs, triangles, PIXI.mesh.Mesh.DRAW_MODES.TRIANGLES);
+    this.mesh.visible = false;
     this.beginNote = beginNote;
     this.endNote = endNote;
 }
@@ -135,12 +136,13 @@ LongMesh.prototype = {
 
             this.mesh.vertices[j*4+2] = x+width/2;
             this.mesh.vertices[j*4+3] = y;
-
+            
             t+=1/LONGMESH_DIVISION;
         }
     },
     update:function(){
         if(this.beginNote.isStarted){
+            this.mesh.visible = true;
             this.setVertex();
         }
     },
@@ -152,12 +154,103 @@ LongMesh.prototype = {
     }
 }
 
-/*
-var FlickMesh = function(beginNote,endNote){
-    
+var FlickMesh = function(beginNote,endNote,texture){
+    var verts = new Float32Array(2*4);
+    var uvs = new Float32Array([0,0,1,0,0,1,1,1]);
+    var triangles = new Uint16Array(6);
+    for(var i=0;i<2;i++){
+        triangles[i*3] = i;
+        triangles[i*3+1] = i+1;
+        triangles[i*3+2] = i+2;
+    }
+    this.mesh = new PIXI.mesh.Mesh(texture,verts, uvs, triangles, PIXI.mesh.Mesh.DRAW_MODES.TRIANGLES);
+    this.mesh.visible = false;
+    this.beginNote = beginNote;
+    this.endNote = endNote;
 }
-*/
 
+FlickMesh.prototype = {
+    setVertex:function(){
+        var x0 = this.beginNote.sprite.x;
+        var y0 = this.beginNote.sprite.y;
+        var x1 = this.endNote.sprite.x;
+        var y1 = this.endNote.sprite.y;
+        var height0 = this.beginNote.scale*40;
+        var height1 = this.endNote.scale*40;
+
+        this.mesh.vertices[0] = x0;
+        this.mesh.vertices[1] = y0-height0/2;
+
+        this.mesh.vertices[2] = x0;
+        this.mesh.vertices[3] = y0+height0/2;
+
+        this.mesh.vertices[4] = x1;
+        this.mesh.vertices[5] = y1-height1/2;
+
+        this.mesh.vertices[6] = x1;
+        this.mesh.vertices[7] = y1+height1/2;
+    },
+    update:function(){
+        if(this.beginNote.isStarted){
+            this.mesh.visible = true;
+            this.setVertex();
+        }
+    },
+    destroy:function(){
+        app.stage.removeChild(this.mesh);
+    },
+    addChild:function(){
+        app.stage.addChild(this.mesh);
+    }
+}
+
+var Line = function(beginNote,endNote,texture){
+    var verts = new Float32Array(2*4);
+    var uvs = new Float32Array([0,0,1,0,0,1,1,1]);
+    var triangles = new Uint16Array(6);
+    for(var i=0;i<2;i++){
+        triangles[i*3] = i;
+        triangles[i*3+1] = i+1;
+        triangles[i*3+2] = i+2;
+    }
+    this.mesh = new PIXI.mesh.Mesh(texture,verts, uvs, triangles, PIXI.mesh.Mesh.DRAW_MODES.TRIANGLES);
+    this.mesh.visible = false;
+    this.beginNote = beginNote;
+    this.endNote = endNote;
+}
+
+Line.prototype = {
+    setVertex:function(){
+        var x0 = this.beginNote.sprite.x;
+        var x1 = this.endNote.sprite.x;
+        var y = this.beginNote.sprite.y;
+        var height = this.beginNote.scale*10;
+
+        this.mesh.vertices[0] = x0
+        this.mesh.vertices[1] = y-height/2;
+
+        this.mesh.vertices[2] = x1
+        this.mesh.vertices[3] = y-height/2;
+
+        this.mesh.vertices[4] = x0
+        this.mesh.vertices[5] = y+height/2;
+
+        this.mesh.vertices[6] = x1
+        this.mesh.vertices[7] = y+height/2;
+    },
+    update:function(){
+        if(this.beginNote.isStarted){
+            this.mesh.visible = true;
+            this.setVertex();
+        }
+    },
+    destroy:function(){
+        app.stage.removeChild(this.mesh);
+    },
+    addChild:function(){
+        app.stage.addChild(this.mesh);
+    }
+}
 
 
 /*
@@ -273,10 +366,11 @@ PIXI.loader
     .add('tex_flick1', 'asset/image/Rflick.png')
     .add('tex_bg', 'asset/image/release_bg.png')
     .add('tex_none', 'asset/image/none.bmp')
+    .add('tex_line', 'asset/image/line.png')
     .add('audio_perfect', "asset/sound/perfect.mp3")
     .add('audio_flick', "asset/sound/flick.mp3")
-    .add('audio_music', "music/jttf.mp3")
-    .add('json_map', "beatmap/jttf.json")
+    .add('audio_music', "music/dadada.mp3")
+    .add('json_map', "beatmap/dadada.json")
     .load(onAssetsLoaded);
 
 /*
@@ -304,6 +398,7 @@ var flickSE;
 var noteList = [[],[],[],[],[]];
 var longMeshList = [];
 var flickMeshList = [];
+var lineList = [];
 
 
 var comboText;
@@ -349,9 +444,9 @@ function onAssetsLoaded(loader, res)
                 lnType = 2;
             }
         }
-        noteList[beatmap.notes[i].finish-1].push(new Note(beatmap.notes[i].time*1000+beatmap.offset*1000,beatmap.notes[i].start,beatmap.notes[i].finish,beatmap.notes[i].type,lnType,res[typeList[lnType==2&&beatmap.notes[i].type==0?1:beatmap.notes[i].type]].texture));   
+        noteList[beatmap.notes[i].finish-1].push(new Note(beatmap.notes[i].time*1000+beatmap.offset*1000,beatmap.notes[i].start,beatmap.notes[i].finish,beatmap.notes[i].type,lnType,beatmap.notes[i].group,res[typeList[lnType==2&&beatmap.notes[i].type==0?1:beatmap.notes[i].type]].texture));   
     }
-    //
+    
     var beginNote;
     for(var i=5;i--;){
         for(var j=0;j<noteList[i].length;j++){
@@ -363,11 +458,45 @@ function onAssetsLoaded(loader, res)
         }
     }
     
-    //メッシュ追加
+    var noteListBuf = [];
+    for(var i=5;i--;){
+        noteListBuf = noteListBuf.concat(noteList[i]);
+    }
+    //同タイミングを接続
+    noteListBuf.sort(function(a,b){
+        if(a.time < b.time) return -1;
+        if(a.time > b.time) return 1;
+        return 0;
+    });
+    for(var i=0;i<noteListBuf.length-1;i++){
+        if(noteListBuf[i].time==noteListBuf[i+1].time){
+            lineList.push(new Line(noteListBuf[i],noteListBuf[i+1],res['tex_line'].texture));
+        }
+    }
+    //同グループを接続
+    noteListBuf.sort(function(a,b){
+        if(a.groupID < b.groupID) return -1;
+        if(a.groupID > b.groupID) return 1;
+        if(a.time < b.time) return -1;
+        if(a.time > b.time) return 1;
+        return 0;
+    });
+    for(var i=0;i<noteListBuf.length-1;i++){
+        if(noteListBuf[i].groupID!=0&&noteListBuf[i].groupID==noteListBuf[i+1].groupID){
+            flickMeshList.push(new FlickMesh(noteListBuf[i],noteListBuf[i+1],res['tex_none'].texture));
+        }
+    }
+    
+    //順番に追加
     for(var i=longMeshList.length;i--;){
         longMeshList[i].addChild();
     }
-    //ノート追加
+    for(var i=flickMeshList.length;i--;){
+        flickMeshList[i].addChild();
+    }
+    for(var i=lineList.length;i--;){
+        lineList[i].addChild();
+    }
     for(var i=5;i--;){
         for(var j=noteList[i].length;j--;){
             noteList[i][j].addChild();
@@ -431,11 +560,28 @@ function update(){
         }
     }
     
+    //頂点位置を更新
     for(var i=longMeshList.length;i--;){
         longMeshList[i].update();
         if(longMeshList[i].endNote.isDestroy){
             longMeshList[i].destroy();
-            longMeshList.slice(i,1);
+            longMeshList.splice(i,1);
+        }
+    }
+    
+    for(var i=lineList.length;i--;){
+        lineList[i].update();
+        if(lineList[i].beginNote.isDestroy||lineList[i].endNote.isDestroy){
+            lineList[i].destroy();
+            lineList.splice(i,1);
+        }
+    }
+    
+    for(var i=flickMeshList.length;i--;){
+        flickMeshList[i].update();
+        if(flickMeshList[i].beginNote.isDestroy||flickMeshList[i].endNote.isDestroy){
+            flickMeshList[i].destroy();
+            flickMeshList.splice(i,1);
         }
     }
     
