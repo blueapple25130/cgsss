@@ -359,37 +359,28 @@ PIXI.loaders.Resource.setExtensionXhrType("wav", PIXI.loaders.Resource.XHR_RESPO
 PIXI.loaders.Resource.setExtensionLoadType("wav", PIXI.loaders.Resource.XHR_RESPONSE_TYPE.BUFFER);
 
 PIXI.loader
-    .add('tex_back', 'asset/image/release_bg.png')
-    .add('tex_tap', 'asset/image/tap.png')
-    .add('tex_long', 'asset/image/long.png')
-    .add('tex_flick0', 'asset/image/Lflick.png')
-    .add('tex_flick1', 'asset/image/Rflick.png')
-    .add('tex_bg', 'asset/image/release_bg.png')
-    .add('tex_none', 'asset/image/none.bmp')
-    .add('tex_line', 'asset/image/line.png')
-    .add('audio_perfect', "asset/sound/perfect.mp3")
-    .add('audio_flick', "asset/sound/flick.mp3")
-    .add('audio_music', "music/dadada.mp3")
-    .add('json_map', "beatmap/dadada.json")
-    .load(onAssetsLoaded);
+    .add('json_map', "beatmap/"+MAP_FILENAME)
+    .load(onMapLoaded);
 
-/*
-game.load.image('backGround', 'asset/image/release_bg.png');
-game.load.image('tap', 'asset/image/tap.png');
-game.load.image('long', 'asset/image/long.png');
-game.load.image('Lflick', 'asset/image/Lflick.png');
-game.load.image('Rflick', 'asset/image/Rflick.png');
+var MAP_DATA;
 
-game.load.spritesheet('judge', 'asset/image/judge.png', 324, 74, 5);
-game.load.spritesheet('comboNum', 'asset/image/combo_number.png', 66, 85, 10);
-game.load.image('comboText', 'asset/image/combo.png');
-
-game.load.audio('tapSE', 'asset/sound/perfect.mp3');
-game.load.audio('flickSE', 'asset/sound/flick.mp3');
-
-game.load.audio('music', 'music/jttf.mp3');
-game.load.json('beatmap', 'beatmap/jttf.json');
-*/
+function onMapLoaded(loader,res){
+    MAP_DATA = res['json_map'].data;
+    NoteManager.speed = SpeedManager.getNoteUseTime(MAP_DATA.speed);
+    loader
+        .add('tex_back', 'asset/image/release_bg.png')
+        .add('tex_tap', 'asset/image/tap.png')
+        .add('tex_long', 'asset/image/long.png')
+        .add('tex_flick0', 'asset/image/Lflick.png')
+        .add('tex_flick1', 'asset/image/Rflick.png')
+        .add('tex_bg', 'asset/image/release_bg.png')
+        .add('tex_none', 'asset/image/none.bmp')
+        .add('tex_line', 'asset/image/line.png')
+        .add('audio_perfect', "asset/sound/perfect.mp3")
+        .add('audio_flick', "asset/sound/flick.mp3")
+        .add('audio_music', "music/"+MAP_DATA.music)
+        .load(onAssetsLoaded);
+}
 
 var music;
 var tapSE;
@@ -431,7 +422,7 @@ function onAssetsLoaded(loader, res)
     */
     //judge = new Judge();
     var longBuf = [false,false,false,false,false];
-    var beatmap = res['json_map'].data;
+    var beatmap = MAP_DATA;
     var typeList = ['tex_tap','tex_long','tex_flick0','tex_flick1'];
     for(var i=0;i<beatmap.notes.length;i++){
         var lnType = 0;
@@ -515,13 +506,6 @@ function onAudioDecoded(res){
     music = new WebAudio(res['audio_music']);
     tapSE = new WebAudio(res['audio_perfect']);
     flickSE = new WebAudio(res['audio_flick']);
-    
-    //タッチ有効化
-    //app.stage.interactive = true;
-    /*app.stage
-        .on("pointerdown",onDown)
-        .on("pointermove",onMove)
-        .on("pointerup",onUp);*/
     
     app.view.addEventListener("touchstart",onDown);
     app.view.addEventListener("touchmove",onMove);
@@ -709,6 +693,9 @@ function onMove(e){
         var id = touch.identifier;
         var dir = -1;
         var sub = x - bufx[id];
+        
+        var lane = InputManager.XtoLane(bufx[id]);
+        
         if(sub<-15){
             dir = 2;
             bufx[id] = x;
@@ -717,7 +704,6 @@ function onMove(e){
             bufx[id] = x;
         }
 
-        var lane = InputManager.XtoLane(x);
         var inputLane = noteList[lane];
         if(inputLane.length!=0){
             if(inputLane[0].noteType==dir){
