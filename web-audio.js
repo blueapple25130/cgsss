@@ -4,7 +4,8 @@ var audioContext = new AudioContext();
 
 var WebAudio = function(buffer){
     this.buffer = buffer;
-    this.time = 0;
+    //iOSでは何故か長さが2倍になるので1/2しておく
+    this.duration = (navigator.userAgent.indexOf('iPhone')==-1&&navigator.userAgent.indexOf('iPad')==-1&&navigator.userAgent.indexOf('iPod'==-1))?buffer.duration*1000:buffer.duration*500;
 };
 
 WebAudio.prototype = {
@@ -17,6 +18,9 @@ WebAudio.prototype = {
     },
     getTime:function(){
         return this.startTime?performance.now() - this.startTime:0;
+    },
+    getIsEnd:function(){
+        return this.getTime()>this.duration;
     }
 };
 

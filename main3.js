@@ -253,21 +253,21 @@ Line.prototype = {
 }
 
 
-/*
-var Judge = function (){
+var JudgeDrawer = function (texture){
     this.frame = 0;
     this.duration = 30;
     this.isStart = false;
-    this.sprite = game.add.sprite(480, 350, 'judge',0);
+    this.sprite = new PIXI.Sprite(texture);
+    this.sprite.position.set(480,350);
     this.sprite.anchor.set(0.5);
     this.sprite.visible = false;
 };
 
-Judge.prototype = {
+JudgeDrawer.prototype = {
     play:function(judge){
         this.frame = 0;
         this.isStart = true;
-        this.sprite.frame = judge;
+        this.sprite.texture.frame = new PIXI.Rectangle(0,74*judge,324,74);
         this.sprite.visible = true
     },
     update:function(){
@@ -286,11 +286,13 @@ Judge.prototype = {
         }else{
             this.sprite.scale.set(1);
         }
+    },
+    addChild:function(){
+        app.stage.addChild(this.sprite);
     }
 };
 
 var ComboManager = {
-    comboBuffer:0,
     digitWidth:66,
     num2digits:function (num){
         return String(num).split('').map(function (e) { return Number(e); });
@@ -309,23 +311,106 @@ var ComboManager = {
         }
         return digits;
     },
-    update:function (combo){
-        if(combo!=this.comboBuffer){
-            var digits = this.num2digits(combo);
-            var positions = this.digitNum2x(digits.length);
-            comboTexture.clear();
-            if(combo!=0){
-                comboTexture.renderXY(comboText, 132, 110); 
-                for(var i=0;i<digits.length;i++){
-                    comboNum.frame = digits[i];
-                    comboTexture.renderXY(comboNum, positions[i]+132, 43);   
-                }   
-            }
-            this.comboBuffer = combo;
+    maxCombo:0,
+    combo:0,
+    addCombo:function(){
+        this.combo++;
+        if(this.maxCombo<this.combo){
+            this.maxCombo = this.combo;
         }
+    },
+    resetCombo:function(){
+        this.combo = 0;
     }
 };
-*/
+
+var ComboDrawer = function(texture,textureNum){
+    this.renderTexture = PIXI.RenderTexture.create(264, 140);
+    this.sprite = new PIXI.Sprite(this.renderTexture);
+    this.sprite.anchor.set(0.5);
+    this.sprite.position.set(800,130);
+    this.spriteText = new PIXI.Sprite(texture);
+    this.spriteText.anchor.set(0.5);
+    this.spriteText.position.set(132,110);
+    this.spriteNum = new PIXI.Sprite(textureNum);
+    this.spriteNum.anchor.set(0.5);
+    this.emptyObject = new PIXI.DisplayObject();
+}
+
+ComboDrawer.prototype = {
+    comboBuffer:0,
+    update:function (){
+        //コンボ数に変化がある場合のみ処理
+        if(ComboManager.combo!=this.comboBuffer){
+            var digits = ComboManager.num2digits(ComboManager.combo);
+            var positions = ComboManager.digitNum2x(digits.length);
+            //テクスチャのクリア
+            app.renderer.render(this.emptyObject, this.renderTexture,true);
+            if(ComboManager.combo!=0){
+                app.renderer.render(this.spriteText, this.renderTexture,false);
+                for(var i=0;i<digits.length;i++){
+                    this.spriteNum.texture.frame = new PIXI.Rectangle(66*digits[i],0,66,85);
+                    this.spriteNum.position.set(positions[i]+132, 43);
+                    app.renderer.render(this.spriteNum, this.renderTexture,false);   
+                }   
+            }
+            this.comboBuffer = ComboManager.combo;
+        }
+    },
+    addChild:function(){
+        app.stage.addChild(this.sprite);
+    }
+}
+
+var ResultDisplay = function(texture){
+    this.sprite = new PIXI.Sprite(texture);
+}
+
+ResultDisplay.prototype = {
+    isShow:false,
+    show:function(){
+    this.isShow = true; 
+        var title = new PIXI.Text(MUSIC_TITLE, {
+            fontFamily: 'Arial',
+            fontSize: 25,
+            fontWeight:'bold', 
+            fill: 'black',
+        });
+        title.position.set(160,125);
+        
+        var resultText = 
+            judge.perfect + "\n" + 
+            judge.great + "\n" + 
+            judge.good + "\n" + 
+            judge.bad + "\n" + 
+            judge.miss;
+        var result = new PIXI.Text(resultText, {
+            fontFamily: 'Arial',
+            fontSize: 28,
+            fontWeight:'bold', 
+            fill: 'black',
+            align:'right'
+        });
+        result.anchor.set(1);
+        result.position.set(410,348);
+        
+        var combo = new PIXI.Text(""+ComboManager.maxCombo, {
+            fontFamily: 'Arial',
+            fontSize: 40,
+            fontWeight:'bold', 
+            fill: 'black',
+            align:'right'
+        });
+        combo.anchor.set(1);
+        combo.position.set(410,398);
+        
+        app.stage.addChild(this.sprite);
+        app.stage.addChild(title);
+        app.stage.addChild(result);
+        app.stage.addChild(combo);
+    }
+}
+
 var JadgeTime = {
     perfect:60,
     great:80,
@@ -341,13 +426,6 @@ var APP_HEIGHT = 540;
 var app = new PIXI.Application(APP_WIDTH, APP_HEIGHT);
 document.body.appendChild(app.view);
 
-var stats = new Stats();
-stats.setMode(0);
-stats.domElement.style.position = 'absolute';
-stats.domElement.style.top = "0px";
-stats.domElement.style.left = "0px";
-document.body.appendChild(stats.domElement);
-
 onResize();
 window.onresize = onResize;
 
@@ -362,11 +440,9 @@ PIXI.loader
     .add('json_map', "beatmap/"+MAP_FILENAME)
     .load(onMapLoaded);
 
-var MAP_DATA;
-
 function onMapLoaded(loader,res){
-    MAP_DATA = res['json_map'].data;
-    NoteManager.speed = SpeedManager.getNoteUseTime(MAP_DATA.speed);
+    NoteManager.speed = SpeedManager.getNoteUseTime(res['json_map'].data.speed);
+    MUSIC_TITLE = res['json_map'].data.title;
     loader
         .add('tex_back', 'asset/image/release_bg.png')
         .add('tex_tap', 'asset/image/tap.png')
@@ -376,53 +452,60 @@ function onMapLoaded(loader,res){
         .add('tex_bg', 'asset/image/release_bg.png')
         .add('tex_none', 'asset/image/none.bmp')
         .add('tex_line', 'asset/image/line.png')
+        .add('tex_judge', 'asset/image/judge.png')
+        .add('tex_combo', 'asset/image/combo.png')
+        .add('tex_combonum', 'asset/image/combo_number.png')
+        .add('tex_result', 'asset/image/result_c.png')
         .add('audio_perfect', "asset/sound/perfect.mp3")
         .add('audio_flick', "asset/sound/flick.mp3")
-        .add('audio_music', "music/"+MAP_DATA.music)
+        .add('audio_music', "music/"+res['json_map'].data.music)
         .load(onAssetsLoaded);
 }
 
+//Audio
 var music;
 var tapSE;
 var flickSE;
 
+//Sprite,Mesh
 var noteList = [[],[],[],[],[]];
 var longMeshList = [];
 var flickMeshList = [];
 var lineList = [];
+var judgeDrawer;
+var comboDrawer;
 
+var resultDisplay;
 
-var comboText;
-var combo = 0;
-var judge;
+var judge = {
+    perfect:0,
+    great:0,
+    good:0,
+    bad:0,
+    miss:0
+}
+
+var MUSIC_TITLE = "";
+
 var LNflag = [false,false,false,false,false];
-var comboNum;
-var comboTexture;
-var comboSprite;
-var comboText;
-var comboAnime;
 
 function onAssetsLoaded(loader, res) 
 {
     app.stage.visible = false;
     //画面生成
-    var bg = new PIXI.Sprite(res['tex_back'].texture);
+    var bg = new PIXI.Sprite(res['tex_bg'].texture);
     app.stage.addChild(bg);
 
-    /*
-    comboNum = game.make.sprite(0, 0, 'comboNum',0);
-    comboNum.anchor.set(0.5);
-    comboText = game.make.sprite(0, 0, 'comboText');
-    comboText.anchor.set(0.5);
-    comboTexture = game.add.renderTexture(264, 140);
-    comboSprite = game.add.sprite(800, 130, comboTexture);
-    comboSprite.anchor.set(0.5);
-    /*
+    judgeDrawer = new JudgeDrawer(res['tex_judge'].texture);
+    judgeDrawer.addChild();
+    
+    comboDrawer = new ComboDrawer(res['tex_combo'].texture,res['tex_combonum'].texture);
+    comboDrawer.addChild();
+    
+    resultDisplay = new ResultDisplay(res['tex_result'].texture);
 
-    */
-    //judge = new Judge();
     var longBuf = [false,false,false,false,false];
-    var beatmap = MAP_DATA;
+    var beatmap = loader.resources['json_map'].data;
     var typeList = ['tex_tap','tex_long','tex_flick0','tex_flick1'];
     for(var i=0;i<beatmap.notes.length;i++){
         var lnType = 0;
@@ -506,7 +589,7 @@ function onAudioDecoded(res){
     music = new WebAudio(res['audio_music']);
     tapSE = new WebAudio(res['audio_perfect']);
     flickSE = new WebAudio(res['audio_flick']);
-    
+
     app.view.addEventListener("touchstart",onDown);
     app.view.addEventListener("touchmove",onMove);
     app.view.addEventListener("touchend",onUp);
@@ -514,7 +597,7 @@ function onAudioDecoded(res){
     //ロード画面消去
     document.body.removeChild(document.getElementById("loading"));
     app.stage.visible = true;
-    
+
     music.play();
     update();
 }
@@ -533,8 +616,9 @@ function update(){
                 }else if(noteList[i][0].longType==2){
                     LNflag[i] = false;
                 }
-                combo = 0;
-                //judge.play(4);
+                ComboManager.resetCombo();
+                judgeDrawer.play(4);
+                judge.miss++;
                 noteList[i][0].destroy();
                 noteList[i].shift();
             }
@@ -569,12 +653,15 @@ function update(){
         }
     }
     
-    //judge.update();
-    //ComboManager.update(combo);
-
+    judgeDrawer.update();
+    comboDrawer.update();
+    
+    if(music.getIsEnd()&&!resultDisplay.isShow){
+        resultDisplay.show();
+    }
+    
     app.renderer.render(app.stage);
     requestAnimationFrame(update);
-    stats.update();
 }
 
 function onDown(e){
@@ -593,33 +680,37 @@ function onDown(e){
                 if(diff<JadgeTime.perfect){
                     //perfect
                     tapSE.play();
-                    //judge.play(0);
+                    judgeDrawer.play(0);
+                    judge.perfect++;
                     if(inputLane[0].longType==1)LNflag[lane] = true;
-                    combo++;
+                    ComboManager.addCombo();
                     inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.great){
                     //great
                     tapSE.play();
-                    //judge.play(1);
+                    judgeDrawer.play(1);
+                    judge.great++;
                     if(inputLane[0].longType==1)LNflag[lane] = true;
-                    combo++;
+                    ComboManager.addCombo();
                     inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.good){
                     //good
                     tapSE.play();
-                    //judge.play(2);
+                    judgeDrawer.play(2);
+                    judge.good++;
                     if(inputLane[0].longType==1)LNflag[lane] = true;
-                    combo = 0;
+                    ComboManager.resetCombo();
                     inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.bad){
                     //bad
                     tapSE.play();
-                    //judge.play(3);
+                    judgeDrawer.play(3);
+                    judge.bad++;
                     if(inputLane[0].longType==1)LNflag[lane] = true;
-                    combo = 0;
+                    ComboManager.resetCombo();
                     inputLane[0].destroy();
                     inputLane.shift();
                 }   
@@ -643,41 +734,46 @@ function onUp(e){
                 if(diff<JadgeTime.perfect){
                     //perfect
                     tapSE.play();
-                    //judge.play(0);
+                    judgeDrawer.play(0);
+                    judge.perfect++;
                     LNflag[lane] = false;
-                    combo++;
+                    ComboManager.addCombo();
                     inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.great){
                     //great
                     tapSE.play();
-                    //judge.play(1);
+                    judgeDrawer.play(1);
+                    judge.great++;
                     LNflag[lane] = false;
-                    combo++;
+                    ComboManager.addCombo();
                     inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.good){
                     //good
                     tapSE.play();
-                    //judge.play(2);
+                    judgeDrawer.play(2);
+                    judge.good++;
                     LNflag[lane] = false;
-                    combo = 0;
+                    ComboManager.resetCombo();
                     inputLane[0].destroy();
                     inputLane.shift();
                 }else if(diff<JadgeTime.bad){
                     //bad
                     tapSE.play();
-                    //judge.play(3);
+                    judgeDrawer.play(3);
+                    judge.bad++;
                     LNflag[lane] = false;
-                    combo = 0;
+                    ComboManager.resetCombo();
                     inputLane[0].destroy();
                     inputLane.shift();
                 }   
             }
         }
         if(LNflag[lane]){
-            combo = 0;
-            //judge.play(4);
+            ComboManager.resetCombo();
+            judgeDrawer.play(4);
+            judge.miss++;
             LNflag[lane] = false;
             inputLane[0].destroy();
             inputLane.shift();
@@ -711,8 +807,9 @@ function onMove(e){
                 if(diff<JadgeTime.bad){
                     if(inputLane[0].longType==2)LNflag[lane] = false;
                     flickSE.play();
-                    //judge.play(0);
-                    combo++;
+                    judgeDrawer.play(0);
+                    judge.perfect++;
+                    ComboManager.addCombo();
                     inputLane[0].destroy();
                     inputLane.shift();
                 }   
