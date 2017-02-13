@@ -1,15 +1,12 @@
-var game = new Phaser.Game(960, 540, Phaser.AUTO, 'game', { preload: preload, create: create, update: update, render: render });
-
-var SpeedManager = SpeedManager || {};
-SpeedManager = {
+///
+var SpeedManager = {
     noteUseTime:[2.7,2.67,2.64,2.61,2.58,2.55,2.52,2.49,2.46,2.43,2.4,2.37,2.34,2.31,2.28,2.25,2.22,2.19,2.16,2.13,2.1,2.07,2.04,2.01,1.98,1.95,1.92,1.89,1.86,1.83,1.8,1.78,1.76,1.74,1.72,1.7,1.68,1.66,1.64,1.62,1.6,1.58,1.56,1.54,1.52,1.5,1.48,1.46,1.44,1.42,1.4,1.38,1.36,1.34,1.32,1.3,1.28,1.26,1.24,1.22,1.2,1.18,1.16,1.14,1.12,1.1,1.08,1.06,1.04,1.02,1,0.98,0.96,0.94,0.92,0.9,0.88,0.86,0.84,0.82,0.8,0.78,0.76,0.74,0.72,0.7,0.66,0.62,0.58,0.54,0.5],
     getNoteUseTime:function (speed){
         return this.noteUseTime[speed*10-10]*1000;
     }
 };
 
-var NoteManager = NoteManager || {};
-NoteManager = {
+var NoteManager = {
     speed:SpeedManager.getNoteUseTime(9.3),
     getNotePositionX:function (t,startPos,finishPos){
         return this.getX(t) * (this.getFinishPosX(finishPos) - this.getStartPosX(startPos)) + this.getStartPosX(startPos);
@@ -46,8 +43,7 @@ NoteManager = {
     }
 };
 
-var InputManager = InputManager || {};
-InputManager = {
+var InputManager = {
     XtoLane:function (x){
         if(x<110)return 0;
         for(var i=0;i<5;i++){
@@ -59,59 +55,219 @@ InputManager = {
     }
 };
 
-var Note = function(time,startPos,finishPos,noteType,longType){
-    var typeList = ['tap','long','Lflick','Rflick'];
+var Note = function(time,startPos,finishPos,noteType,longType,groupID,texture){
     var anchorList = [0.5,0.5,0.6,0.4];
     this.time = time;
     this.startPos = startPos;
     this.finishPos = finishPos;
     this.noteType = noteType;
     this.longType = longType;
-    
+    this.groupID = groupID;
+
     this.isStarted = false;
-    this.isThrough = false;
     this.isDestroy = false;
-    
-    this.sprite = game.add.sprite(-500, -500, typeList[longType==2&&noteType==0?1:noteType]);
+
+    this.sprite = new PIXI.Sprite(texture);
     this.sprite.visible = false;
-    this.sprite.anchor.set(anchorList[noteType]);   
+    this.sprite.anchor.set(anchorList[noteType],0.5);
+    this.sprite.x = NoteManager.getNotePositionX(0,this.startPos,this.finishPos);
+    this.sprite.y = NoteManager.getNotePositionY(0);
+    this.t = 0;
+    this.scale = 0;
 };
 
 Note.prototype = {
     setPosition:function (t){
+        this.t = t;
         this.sprite.x = NoteManager.getNotePositionX(t,this.startPos,this.finishPos);
         this.sprite.y = NoteManager.getNotePositionY(t);
-        this.sprite.scale.set(85/265*NoteManager.getScale(t));
+        this.scale = NoteManager.getScale(t);
+        this.sprite.scale.set(85/256*this.scale);
     },
     update:function (time){
         var t = NoteManager.getT(time-this.time);
         if (!this.isStarted && t > 0){
             this.sprite.visible = true;
             this.isStarted = true;
-        }else if(!this.isThrough && t >= 1.5){
-            this.sprite.visible = false;
-            this.isThrough = true;
         }
-        if(0 < t && t < 1.5){
+        if(this.isStarted){
             this.setPosition(t);   
         }
+    },
+    destroy:function(){
+        app.stage.removeChild(this.sprite);
+        this.isDestroy = true;
+    },
+    addChild:function(){
+        app.stage.addChild(this.sprite);
     }
 };
 
-var Judge = function (){
+var LONGMESH_DIVISION = 30;
+
+var LongMesh = function(beginNote,endNote,texture){
+    var verts = new Float32Array((LONGMESH_DIVISION+1)*4);
+    var uvs = new Float32Array((LONGMESH_DIVISION+1)*4);
+    var triangles = new Uint16Array(LONGMESH_DIVISION*6);
+    for(var i=0;i<LONGMESH_DIVISION*2;i++){
+        triangles[i*3] = i;
+        triangles[i*3+1] = i+1;
+        triangles[i*3+2] = i+2;
+    }    
+    this.mesh = new PIXI.mesh.Mesh(texture,verts, uvs, triangles, PIXI.mesh.Mesh.DRAW_MODES.TRIANGLES);
+    this.mesh.visible = false;
+    this.beginNote = beginNote;
+    this.endNote = endNote;
+}
+
+LongMesh.prototype = {
+    setVertex:function(){
+        var beginT = this.beginNote.isDestroy?1:this.beginNote.t;
+        var endT = this.endNote.t;
+        var t = 0;
+        for(var j=0;j<LONGMESH_DIVISION+1;j++){
+            var clipT = Math.min(Math.max(endT,t),beginT);
+            var x = NoteManager.getNotePositionX(clipT,this.beginNote.startPos,this.beginNote.finishPos);
+            var y = NoteManager.getNotePositionY(clipT);
+            var width = 85*NoteManager.getScale(clipT);
+
+            this.mesh.vertices[j*4] = x-width/2;
+            this.mesh.vertices[j*4+1] = y;
+
+            this.mesh.vertices[j*4+2] = x+width/2;
+            this.mesh.vertices[j*4+3] = y;
+            
+            t+=1/LONGMESH_DIVISION;
+        }
+    },
+    update:function(){
+        if(this.beginNote.isStarted){
+            this.mesh.visible = true;
+            this.setVertex();
+        }
+    },
+    destroy:function(){
+        app.stage.removeChild(this.mesh);
+    },
+    addChild:function(){
+        app.stage.addChild(this.mesh);
+    }
+}
+
+var FlickMesh = function(beginNote,endNote,texture){
+    var verts = new Float32Array(2*4);
+    var uvs = new Float32Array([0,0,1,0,0,1,1,1]);
+    var triangles = new Uint16Array(6);
+    for(var i=0;i<2;i++){
+        triangles[i*3] = i;
+        triangles[i*3+1] = i+1;
+        triangles[i*3+2] = i+2;
+    }
+    this.mesh = new PIXI.mesh.Mesh(texture,verts, uvs, triangles, PIXI.mesh.Mesh.DRAW_MODES.TRIANGLES);
+    this.mesh.visible = false;
+    this.beginNote = beginNote;
+    this.endNote = endNote;
+}
+
+FlickMesh.prototype = {
+    setVertex:function(){
+        var x0 = this.beginNote.sprite.x;
+        var y0 = this.beginNote.sprite.y;
+        var x1 = this.endNote.sprite.x;
+        var y1 = this.endNote.sprite.y;
+        var height0 = this.beginNote.scale*40;
+        var height1 = this.endNote.scale*40;
+
+        this.mesh.vertices[0] = x0;
+        this.mesh.vertices[1] = y0-height0/2;
+
+        this.mesh.vertices[2] = x0;
+        this.mesh.vertices[3] = y0+height0/2;
+
+        this.mesh.vertices[4] = x1;
+        this.mesh.vertices[5] = y1-height1/2;
+
+        this.mesh.vertices[6] = x1;
+        this.mesh.vertices[7] = y1+height1/2;
+    },
+    update:function(){
+        if(this.beginNote.isStarted){
+            this.mesh.visible = true;
+            this.setVertex();
+        }
+    },
+    destroy:function(){
+        app.stage.removeChild(this.mesh);
+    },
+    addChild:function(){
+        app.stage.addChild(this.mesh);
+    }
+}
+
+var Line = function(beginNote,endNote,texture){
+    var verts = new Float32Array(2*4);
+    var uvs = new Float32Array([0,0,1,0,0,1,1,1]);
+    var triangles = new Uint16Array(6);
+    for(var i=0;i<2;i++){
+        triangles[i*3] = i;
+        triangles[i*3+1] = i+1;
+        triangles[i*3+2] = i+2;
+    }
+    this.mesh = new PIXI.mesh.Mesh(texture,verts, uvs, triangles, PIXI.mesh.Mesh.DRAW_MODES.TRIANGLES);
+    this.mesh.visible = false;
+    this.beginNote = beginNote;
+    this.endNote = endNote;
+}
+
+Line.prototype = {
+    setVertex:function(){
+        var x0 = this.beginNote.sprite.x;
+        var x1 = this.endNote.sprite.x;
+        var y = this.beginNote.sprite.y;
+        var height = this.beginNote.scale*10;
+
+        this.mesh.vertices[0] = x0
+        this.mesh.vertices[1] = y-height/2;
+
+        this.mesh.vertices[2] = x1
+        this.mesh.vertices[3] = y-height/2;
+
+        this.mesh.vertices[4] = x0
+        this.mesh.vertices[5] = y+height/2;
+
+        this.mesh.vertices[6] = x1
+        this.mesh.vertices[7] = y+height/2;
+    },
+    update:function(){
+        if(this.beginNote.isStarted){
+            this.mesh.visible = true;
+            this.setVertex();
+        }
+    },
+    destroy:function(){
+        app.stage.removeChild(this.mesh);
+    },
+    addChild:function(){
+        app.stage.addChild(this.mesh);
+    }
+}
+
+
+var JudgeDrawer = function (texture){
     this.frame = 0;
     this.duration = 30;
     this.isStart = false;
-    this.sprite = game.add.sprite(480, 350, 'judge',0);
+    this.sprite = new PIXI.Sprite(texture);
+    this.sprite.position.set(480,350);
     this.sprite.anchor.set(0.5);
     this.sprite.visible = false;
 };
 
-Judge.prototype = {
+JudgeDrawer.prototype = {
     play:function(judge){
         this.frame = 0;
         this.isStart = true;
-        this.sprite.frame = judge;
+        this.sprite.texture.frame = new PIXI.Rectangle(0,74*judge,324,74);
         this.sprite.visible = true
     },
     update:function(){
@@ -130,11 +286,13 @@ Judge.prototype = {
         }else{
             this.sprite.scale.set(1);
         }
+    },
+    addChild:function(){
+        app.stage.addChild(this.sprite);
     }
 };
 
 var ComboManager = {
-    comboBuffer:0,
     digitWidth:66,
     num2digits:function (num){
         return String(num).split('').map(function (e) { return Number(e); });
@@ -153,22 +311,105 @@ var ComboManager = {
         }
         return digits;
     },
-    update:function (combo){
-        if(combo!=this.comboBuffer){
-            var digits = this.num2digits(combo);
-            var positions = this.digitNum2x(digits.length);
-            comboTexture.clear();
-            if(combo!=0){
-                comboTexture.renderXY(comboText, 132, 110); 
-                for(var i=0;i<digits.length;i++){
-                    comboNum.frame = digits[i];
-                    comboTexture.renderXY(comboNum, positions[i]+132, 43);   
-                }   
-            }
-            this.comboBuffer = combo;
+    maxCombo:0,
+    combo:0,
+    addCombo:function(){
+        this.combo++;
+        if(this.maxCombo<this.combo){
+            this.maxCombo = this.combo;
         }
+    },
+    resetCombo:function(){
+        this.combo = 0;
     }
 };
+
+var ComboDrawer = function(texture,textureNum){
+    this.renderTexture = PIXI.RenderTexture.create(264, 140);
+    this.sprite = new PIXI.Sprite(this.renderTexture);
+    this.sprite.anchor.set(0.5);
+    this.sprite.position.set(800,130);
+    this.spriteText = new PIXI.Sprite(texture);
+    this.spriteText.anchor.set(0.5);
+    this.spriteText.position.set(132,110);
+    this.spriteNum = new PIXI.Sprite(textureNum);
+    this.spriteNum.anchor.set(0.5);
+    this.emptyObject = new PIXI.DisplayObject();
+}
+
+ComboDrawer.prototype = {
+    comboBuffer:0,
+    update:function (){
+        //コンボ数に変化がある場合のみ処理
+        if(ComboManager.combo!=this.comboBuffer){
+            var digits = ComboManager.num2digits(ComboManager.combo);
+            var positions = ComboManager.digitNum2x(digits.length);
+            //テクスチャのクリア
+            app.renderer.render(this.emptyObject, this.renderTexture,true);
+            if(ComboManager.combo!=0){
+                app.renderer.render(this.spriteText, this.renderTexture,false);
+                for(var i=0;i<digits.length;i++){
+                    this.spriteNum.texture.frame = new PIXI.Rectangle(66*digits[i],0,66,85);
+                    this.spriteNum.position.set(positions[i]+132, 43);
+                    app.renderer.render(this.spriteNum, this.renderTexture,false);   
+                }   
+            }
+            this.comboBuffer = ComboManager.combo;
+        }
+    },
+    addChild:function(){
+        app.stage.addChild(this.sprite);
+    }
+}
+
+var ResultDisplay = function(texture){
+    this.sprite = new PIXI.Sprite(texture);
+}
+
+ResultDisplay.prototype = {
+    isShow:false,
+    show:function(){
+    this.isShow = true; 
+        var title = new PIXI.Text(MUSIC_TITLE, {
+            fontFamily: 'Arial',
+            fontSize: 25,
+            fontWeight:'bold', 
+            fill: 'black',
+        });
+        title.position.set(160,125);
+        
+        var resultText = 
+            judge.perfect + "\n" + 
+            judge.great + "\n" + 
+            judge.good + "\n" + 
+            judge.bad + "\n" + 
+            judge.miss;
+        var result = new PIXI.Text(resultText, {
+            fontFamily: 'Arial',
+            fontSize: 28,
+            fontWeight:'bold', 
+            fill: 'black',
+            align:'right'
+        });
+        result.anchor.set(1);
+        result.position.set(410,348);
+        
+        var combo = new PIXI.Text(""+ComboManager.maxCombo, {
+            fontFamily: 'Arial',
+            fontSize: 40,
+            fontWeight:'bold', 
+            fill: 'black',
+            align:'right'
+        });
+        combo.anchor.set(1);
+        combo.position.set(410,398);
+        
+        app.stage.addChild(this.sprite);
+        app.stage.addChild(title);
+        app.stage.addChild(result);
+        app.stage.addChild(combo);
+    }
+}
 
 var JadgeTime = {
     perfect:60,
@@ -177,70 +418,95 @@ var JadgeTime = {
     bad:130
 }
 
-function preload() {
-    game.stage.disableVisibilityChange = true;
-    //スケール設定
-    game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
-    game.scale.refresh();
-    //読み込み
-    game.load.image('backGround', 'asset/image/release_bg.png');
-    game.load.image('tap', 'asset/image/tap.png');
-    game.load.image('long', 'asset/image/long.png');
-    game.load.image('Lflick', 'asset/image/Lflick.png');
-    game.load.image('Rflick', 'asset/image/Rflick.png');
-    
-    game.load.spritesheet('judge', 'asset/image/judge.png', 324, 74, 5);
-    game.load.spritesheet('comboNum', 'asset/image/combo_number.png', 66, 85, 10);
-    game.load.image('comboText', 'asset/image/combo.png');
+///
 
-    game.load.audio('tapSE', 'asset/sound/perfect.mp3');
-    game.load.audio('flickSE', 'asset/sound/flick.mp3');
+var APP_WIDTH = 960;
+var APP_HEIGHT = 540;
 
-    game.load.audio('music', 'music/jttf.mp3');
-    game.load.json('beatmap', 'beatmap/jttf.json');
+var app = new PIXI.Application(APP_WIDTH, APP_HEIGHT);
+document.body.appendChild(app.view);
+
+onResize();
+window.onresize = onResize;
+
+PIXI.loaders.Resource.setExtensionXhrType("mp3", PIXI.loaders.Resource.XHR_RESPONSE_TYPE.BUFFER);
+PIXI.loaders.Resource.setExtensionLoadType("mp3", PIXI.loaders.Resource.XHR_RESPONSE_TYPE.BUFFER);
+PIXI.loaders.Resource.setExtensionXhrType("ogg", PIXI.loaders.Resource.XHR_RESPONSE_TYPE.BUFFER);
+PIXI.loaders.Resource.setExtensionLoadType("ogg", PIXI.loaders.Resource.XHR_RESPONSE_TYPE.BUFFER);
+PIXI.loaders.Resource.setExtensionXhrType("wav", PIXI.loaders.Resource.XHR_RESPONSE_TYPE.BUFFER);
+PIXI.loaders.Resource.setExtensionLoadType("wav", PIXI.loaders.Resource.XHR_RESPONSE_TYPE.BUFFER);
+
+PIXI.loader
+    .add('json_map', "beatmap/"+MAP_FILENAME)
+    .load(onMapLoaded);
+
+function onMapLoaded(loader,res){
+    NoteManager.speed = SpeedManager.getNoteUseTime(res['json_map'].data.speed);
+    MUSIC_TITLE = res['json_map'].data.title;
+    loader
+        .add('tex_back', 'asset/image/release_bg.png')
+        .add('tex_tap', 'asset/image/tap.png')
+        .add('tex_long', 'asset/image/long.png')
+        .add('tex_flick0', 'asset/image/Lflick.png')
+        .add('tex_flick1', 'asset/image/Rflick.png')
+        .add('tex_bg', 'asset/image/release_bg.png')
+        .add('tex_none', 'asset/image/none.bmp')
+        .add('tex_line', 'asset/image/line.png')
+        .add('tex_judge', 'asset/image/judge.png')
+        .add('tex_combo', 'asset/image/combo.png')
+        .add('tex_combonum', 'asset/image/combo_number.png')
+        .add('tex_result', 'asset/image/result_c.png')
+        .add('audio_perfect', "asset/sound/perfect.mp3")
+        .add('audio_flick', "asset/sound/flick.mp3")
+        .add('audio_music', "music/"+res['json_map'].data.music)
+        .load(onAssetsLoaded);
 }
 
+//Audio
 var music;
 var tapSE;
 var flickSE;
-var notes = [[],[],[],[],[]];
-var comboText;
-var combo = 0;
-var judge;
+
+//Sprite,Mesh
+var noteList = [[],[],[],[],[]];
+var longMeshList = [];
+var flickMeshList = [];
+var lineList = [];
+var judgeDrawer;
+var comboDrawer;
+
+var resultDisplay;
+
+var judge = {
+    perfect:0,
+    great:0,
+    good:0,
+    bad:0,
+    miss:0
+}
+
+var MUSIC_TITLE = "";
+
 var LNflag = [false,false,false,false,false];
-var comboNum;
-var comboTexture;
-var comboSprite;
-var comboText;
-var comboAnime;
 
-var pixitest;
+function onAssetsLoaded(loader, res) 
+{
+    app.stage.visible = false;
+    //画面生成
+    var bg = new PIXI.Sprite(res['tex_bg'].texture);
+    app.stage.addChild(bg);
 
-function create() {
+    judgeDrawer = new JudgeDrawer(res['tex_judge'].texture);
+    judgeDrawer.addChild();
     
-    console.log(PIXI);
+    comboDrawer = new ComboDrawer(res['tex_combo'].texture,res['tex_combonum'].texture);
+    comboDrawer.addChild();
     
-    music = game.add.audio('music');
-    tapSE = game.add.audio('tapSE');
-    tapSE.allowMultiple = true;
-    flickSE = game.add.audio('flickSE');
-    flickSE.allowMultiple = true;
-    game.add.tileSprite(0, 0, 960, 540, 'backGround');
-    comboNum = game.make.sprite(0, 0, 'comboNum',0);
-    comboNum.anchor.set(0.5);
-    comboText = game.make.sprite(0, 0, 'comboText');
-    comboText.anchor.set(0.5);
-    comboTexture = game.add.renderTexture(264, 140);
-    comboSprite = game.add.sprite(800, 130, comboTexture);
-    comboSprite.anchor.set(0.5);
-    /*
-    pixitest = new PIXI.Sprite();
-    
-    game.add.existing(pixitest);
-    */
-    judge = new Judge();
+    resultDisplay = new ResultDisplay(res['tex_result'].texture);
+
     var longBuf = [false,false,false,false,false];
-    var beatmap = game.cache.getJSON('beatmap');
+    var beatmap = loader.resources['json_map'].data;
+    var typeList = ['tex_tap','tex_long','tex_flick0','tex_flick1'];
     for(var i=0;i<beatmap.notes.length;i++){
         var lnType = 0;
         if(beatmap.notes[i].type==1){
@@ -252,184 +518,317 @@ function create() {
                 lnType = 2;
             }
         }
-        notes[beatmap.notes[i].finish-1].push(new Note(beatmap.notes[i].time*1000+beatmap.offset*1000,beatmap.notes[i].start,beatmap.notes[i].finish,beatmap.notes[i].type,lnType));   
+        noteList[beatmap.notes[i].finish-1].push(new Note(beatmap.notes[i].time*1000+beatmap.offset*1000,beatmap.notes[i].start,beatmap.notes[i].finish,beatmap.notes[i].type,lnType,beatmap.notes[i].group,res[typeList[lnType==2&&beatmap.notes[i].type==0?1:beatmap.notes[i].type]].texture));   
     }
-    music.play();
-    game.input.onDown.add(onDown, this);
-    game.input.addMoveCallback(onMove, this);
-    game.input.onUp.add(onUp, this);  
+    
+    var beginNote;
+    for(var i=5;i--;){
+        for(var j=0;j<noteList[i].length;j++){
+            if(noteList[i][j].longType==1){
+                beginNote = noteList[i][j];
+            }else if(noteList[i][j].longType==2){
+                longMeshList.push(new LongMesh(beginNote,noteList[i][j],res['tex_none'].texture))   
+            }
+        }
+    }
+    
+    var noteListBuf = [];
+    for(var i=5;i--;){
+        noteListBuf = noteListBuf.concat(noteList[i]);
+    }
+    //同タイミングを接続
+    noteListBuf.sort(function(a,b){
+        if(a.time < b.time) return -1;
+        if(a.time > b.time) return 1;
+        return 0;
+    });
+    for(var i=0;i<noteListBuf.length-1;i++){
+        if(noteListBuf[i].time==noteListBuf[i+1].time){
+            lineList.push(new Line(noteListBuf[i],noteListBuf[i+1],res['tex_line'].texture));
+        }
+    }
+    //同グループを接続
+    noteListBuf.sort(function(a,b){
+        if(a.groupID < b.groupID) return -1;
+        if(a.groupID > b.groupID) return 1;
+        if(a.time < b.time) return -1;
+        if(a.time > b.time) return 1;
+        return 0;
+    });
+    for(var i=0;i<noteListBuf.length-1;i++){
+        if(noteListBuf[i].groupID!=0&&noteListBuf[i].groupID==noteListBuf[i+1].groupID){
+            flickMeshList.push(new FlickMesh(noteListBuf[i],noteListBuf[i+1],res['tex_none'].texture));
+        }
+    }
+    
+    //順番に追加
+    for(var i=longMeshList.length;i--;){
+        longMeshList[i].addChild();
+    }
+    for(var i=flickMeshList.length;i--;){
+        flickMeshList[i].addChild();
+    }
+    for(var i=lineList.length;i--;){
+        lineList[i].addChild();
+    }
+    for(var i=5;i--;){
+        for(var j=noteList[i].length;j--;){
+            noteList[i][j].addChild();
+        }
+    }
+    //オーディオのデコード
+    new WebAudioDecoder()
+        .add('audio_music',res['audio_music'].data)
+        .add('audio_perfect',res['audio_perfect'].data)
+        .add('audio_flick',res['audio_flick'].data)
+        .decode(onAudioDecoded);
+}
 
+function onAudioDecoded(res){
+    
+    music = new WebAudio(res['audio_music']);
+    tapSE = new WebAudio(res['audio_perfect']);
+    flickSE = new WebAudio(res['audio_flick']);
+
+    app.view.addEventListener("touchstart",onDown);
+    app.view.addEventListener("touchmove",onMove);
+    app.view.addEventListener("touchend",onUp);
+    
+    //ロード画面消去
+    document.body.removeChild(document.getElementById("loading"));
+    app.stage.visible = true;
+
+    music.play();
+    update();
 }
 
 var LNMemory = {};
 var bufx = {};
 
-function update() {
+function update(){
     for(var i=0;i<5;i++){
-        if(notes[i].length!=0){
-            if(notes[i][0].time-music.currentTime<-JadgeTime.bad){
+        if(noteList[i].length!=0){
+            if(noteList[i][0].time-music.getTime()<-JadgeTime.bad){
                 //miss
-                if(notes[i][0].longType==1){
-                    notes[i][0].sprite.destroy();
-                    notes[i].shift();
-                }else if(notes[i][0].longType==2){
+                if(noteList[i][0].longType==1){
+                    noteList[i][0].destroy();
+                    noteList[i].shift();
+                }else if(noteList[i][0].longType==2){
                     LNflag[i] = false;
                 }
-                combo = 0;
-                judge.play(4);
-                notes[i][0].sprite.destroy();
-                notes[i].shift();
+                ComboManager.resetCombo();
+                judgeDrawer.play(4);
+                judge.miss++;
+                noteList[i][0].destroy();
+                noteList[i].shift();
             }
         }
-        notes[i].forEach(function(e,i,array){
-            e.update(music.currentTime); 
-        });
-    }
-    /*
-    for(var i=0;i<5;i++){
-
-        for(var j=0;j<notes[i].length;j++){
-            if(notes[i][j].longType==1){
-            }
+        for(var j=noteList[i].length;j--;){
+            noteList[i][j].update(music.getTime());
         }
     }
-    */
-    judge.update();
-    ComboManager.update(combo);
-}
-
-function render() {
-}
     
-function onDown() {
-    var x = arguments[0].x;
-    var y = arguments[0].y;
-    var id = arguments[0].identifier||0;
-    bufx[id] = x;
-    var lane = InputManager.XtoLane(x);
-    var inputLane = notes[lane];
-	LNMemory[id] = lane;
-    if(inputLane.length!=0){
-        if(inputLane[0].noteType<2&&inputLane[0].longType!=2){
-            var diff = Math.abs(inputLane[0].time-music.currentTime);
-            if(diff<JadgeTime.perfect){
-                //perfect
-                tapSE.play();
-                judge.play(0);
-                if(inputLane[0].longType==1)LNflag[lane] = true;
-                combo++;
-                inputLane[0].sprite.destroy();
-                inputLane.shift();
-            }else if(diff<JadgeTime.great){
-                //great
-                tapSE.play();
-                judge.play(1);
-                if(inputLane[0].longType==1)LNflag[lane] = true;
-                combo++;
-                inputLane[0].sprite.destroy();
-                inputLane.shift();
-            }else if(diff<JadgeTime.good){
-                //good
-                tapSE.play();
-                judge.play(2);
-                if(inputLane[0].longType==1)LNflag[lane] = true;
-                combo = 0;
-                inputLane[0].sprite.destroy();
-                inputLane.shift();
-            }else if(diff<JadgeTime.bad){
-                //bad
-                tapSE.play();
-                judge.play(3);
-                if(inputLane[0].longType==1)LNflag[lane] = true;
-                combo = 0;
-                inputLane[0].sprite.destroy();
-                inputLane.shift();
-            }   
+    //頂点位置を更新
+    for(var i=longMeshList.length;i--;){
+        longMeshList[i].update();
+        if(longMeshList[i].endNote.isDestroy){
+            longMeshList[i].destroy();
+            longMeshList.splice(i,1);
+        }
+    }
+    
+    for(var i=lineList.length;i--;){
+        lineList[i].update();
+        if(lineList[i].beginNote.isDestroy||lineList[i].endNote.isDestroy){
+            lineList[i].destroy();
+            lineList.splice(i,1);
+        }
+    }
+    
+    for(var i=flickMeshList.length;i--;){
+        flickMeshList[i].update();
+        if(flickMeshList[i].beginNote.isDestroy||flickMeshList[i].endNote.isDestroy){
+            flickMeshList[i].destroy();
+            flickMeshList.splice(i,1);
+        }
+    }
+    
+    judgeDrawer.update();
+    comboDrawer.update();
+    
+    if(music.getIsEnd()&&!resultDisplay.isShow){
+        resultDisplay.show();
+    }
+    
+    app.renderer.render(app.stage);
+    requestAnimationFrame(update);
+}
+
+function onDown(e){
+    for(var i=e.touches.length;i--;){
+        var touch = e.touches[i];
+        var x = touch.clientX/app.view.clientWidth*APP_WIDTH;
+        var y = touch.clientY/app.view.clientHeight*APP_HEIGHT;
+        var id = touch.identifier;
+        bufx[id] = x;
+        var lane = InputManager.XtoLane(x);
+        var inputLane = noteList[lane];
+        LNMemory[id] = lane;
+        if(inputLane.length!=0){
+            if(inputLane[0].noteType<2&&inputLane[0].longType!=2){
+                var diff = Math.abs(inputLane[0].time-music.getTime());
+                if(diff<JadgeTime.perfect){
+                    //perfect
+                    tapSE.play();
+                    judgeDrawer.play(0);
+                    judge.perfect++;
+                    if(inputLane[0].longType==1)LNflag[lane] = true;
+                    ComboManager.addCombo();
+                    inputLane[0].destroy();
+                    inputLane.shift();
+                }else if(diff<JadgeTime.great){
+                    //great
+                    tapSE.play();
+                    judgeDrawer.play(1);
+                    judge.great++;
+                    if(inputLane[0].longType==1)LNflag[lane] = true;
+                    ComboManager.addCombo();
+                    inputLane[0].destroy();
+                    inputLane.shift();
+                }else if(diff<JadgeTime.good){
+                    //good
+                    tapSE.play();
+                    judgeDrawer.play(2);
+                    judge.good++;
+                    if(inputLane[0].longType==1)LNflag[lane] = true;
+                    ComboManager.resetCombo();
+                    inputLane[0].destroy();
+                    inputLane.shift();
+                }else if(diff<JadgeTime.bad){
+                    //bad
+                    tapSE.play();
+                    judgeDrawer.play(3);
+                    judge.bad++;
+                    if(inputLane[0].longType==1)LNflag[lane] = true;
+                    ComboManager.resetCombo();
+                    inputLane[0].destroy();
+                    inputLane.shift();
+                }   
+            }
         }
     }
 }
 
-function onMove(e) {
-    var x = e.x;
-    var y = e.y;
-    var id = e.identifier||0;
-    var dir = -1;
-    var sub = x - bufx[id];
-    if(sub<-15){
-        dir = 2;
+function onUp(e){
+    for(var i=e.changedTouches.length;i--;){
+        var touch = e.changedTouches[i];
+        var x = touch.clientX/app.view.clientWidth*APP_WIDTH;
+        var y = touch.clientY/app.view.clientHeight*APP_HEIGHT;
+        var id = touch.identifier;
         bufx[id] = x;
-    }else if(sub>15){
-        dir = 3;
-        bufx[id] = x;
-    }
-
-    var lane = InputManager.XtoLane(x);
-    var inputLane = notes[lane];
-    if(inputLane.length!=0){
-        if(inputLane[0].noteType==dir){
-            var diff = Math.abs(inputLane[0].time-music.currentTime);
-            if(diff<JadgeTime.bad){
-                if(inputLane[0].longType==2)LNflag[lane] = false;
-                flickSE.play();
-                judge.play(0);
-                combo++;
-                inputLane[0].sprite.destroy();
-                inputLane.shift();
-            }   
+        var lane = LNMemory[id];
+        var inputLane = noteList[lane];
+        if(inputLane.length!=0){
+            if(inputLane[0].longType==2&&inputLane[0].noteType<2){
+                var diff = Math.abs(inputLane[0].time-music.getTime());
+                if(diff<JadgeTime.perfect){
+                    //perfect
+                    tapSE.play();
+                    judgeDrawer.play(0);
+                    judge.perfect++;
+                    LNflag[lane] = false;
+                    ComboManager.addCombo();
+                    inputLane[0].destroy();
+                    inputLane.shift();
+                }else if(diff<JadgeTime.great){
+                    //great
+                    tapSE.play();
+                    judgeDrawer.play(1);
+                    judge.great++;
+                    LNflag[lane] = false;
+                    ComboManager.addCombo();
+                    inputLane[0].destroy();
+                    inputLane.shift();
+                }else if(diff<JadgeTime.good){
+                    //good
+                    tapSE.play();
+                    judgeDrawer.play(2);
+                    judge.good++;
+                    LNflag[lane] = false;
+                    ComboManager.resetCombo();
+                    inputLane[0].destroy();
+                    inputLane.shift();
+                }else if(diff<JadgeTime.bad){
+                    //bad
+                    tapSE.play();
+                    judgeDrawer.play(3);
+                    judge.bad++;
+                    LNflag[lane] = false;
+                    ComboManager.resetCombo();
+                    inputLane[0].destroy();
+                    inputLane.shift();
+                }   
+            }
+        }
+        if(LNflag[lane]){
+            ComboManager.resetCombo();
+            judgeDrawer.play(4);
+            judge.miss++;
+            LNflag[lane] = false;
+            inputLane[0].destroy();
+            inputLane.shift();
         }
     }
 }
 
-function onUp() {
-    var x = arguments[0].x;
-    var y = arguments[0].y;
-    var id = arguments[0].identifier||0;
-    bufx[id] = x;
-    var lane = LNMemory[id];
-    var inputLane = notes[lane];
-    if(inputLane.length!=0){
-        if(inputLane[0].longType==2&&inputLane[0].noteType<2){
-            var diff = Math.abs(inputLane[0].time-music.currentTime);
-            if(diff<JadgeTime.perfect){
-                //perfect
-                tapSE.play();
-                judge.play(0);
-                LNflag[lane] = false;
-                combo++;
-                inputLane[0].sprite.destroy();
-                inputLane.shift();
-            }else if(diff<JadgeTime.great){
-                //great
-                tapSE.play();
-                judge.play(1);
-                LNflag[lane] = false;
-                combo++;
-                inputLane[0].sprite.destroy();
-                inputLane.shift();
-            }else if(diff<JadgeTime.good){
-                //good
-                tapSE.play();
-                judge.play(2);
-                LNflag[lane] = false;
-                combo = 0;
-                inputLane[0].sprite.destroy();
-                inputLane.shift();
-            }else if(diff<JadgeTime.bad){
-                //bad
-                tapSE.play();
-                judge.play(3);
-                LNflag[lane] = false;
-                combo = 0;
-                inputLane[0].sprite.destroy();
-                inputLane.shift();
-            }   
+function onMove(e){
+    for(var i=e.touches.length;i--;){
+        var touch = e.touches[i];
+        var x = touch.clientX/app.view.clientWidth*APP_WIDTH;
+        var y = touch.clientY/app.view.clientHeight*APP_HEIGHT;
+        var id = touch.identifier;
+        var dir = -1;
+        var sub = x - bufx[id];
+        
+        var lane = InputManager.XtoLane(bufx[id]);
+        
+        if(sub<-15){
+            dir = 2;
+            bufx[id] = x;
+        }else if(sub>15){
+            dir = 3;
+            bufx[id] = x;
         }
+
+        var inputLane = noteList[lane];
+        if(inputLane.length!=0){
+            if(inputLane[0].noteType==dir){
+                var diff = Math.abs(inputLane[0].time-music.getTime());
+                if(diff<JadgeTime.bad){
+                    if(inputLane[0].longType==2)LNflag[lane] = false;
+                    flickSE.play();
+                    judgeDrawer.play(0);
+                    judge.perfect++;
+                    ComboManager.addCombo();
+                    inputLane[0].destroy();
+                    inputLane.shift();
+                }   
+            }
+        }   
     }
-    if(LNflag[lane]){
-        combo = 0;
-        judge.play(4);
-        LNflag[lane] = false;
-        inputLane[0].sprite.destroy();
-        inputLane.shift();
+}
+
+function onResize() {
+    var ratio
+    var ratioWidth = window.innerWidth / APP_WIDTH;
+    var ratioHeight = window.innerHeight / APP_HEIGHT;
+    if (ratioWidth < ratioHeight) {
+        ratio = ratioWidth;
+    } else {
+        ratio = ratioHeight;
     }
+    app.view.style.width = ~~(APP_WIDTH * ratio) + 'px';
+    app.view.style.height = ~~(APP_HEIGHT * ratio) + 'px';
+    clientWidth = app.view.clientWidth;
+    clientHeight = app.view.clientWidth;
 }

@@ -15,6 +15,6 @@
         <?php
         echo '<script>var MAP_FILENAME = "'.$_GET['map'].'"</script>';
         ?>
-        <script src="main3.js"></script>
+        <script src="main.js"></script>
     </body>    
 </html>
