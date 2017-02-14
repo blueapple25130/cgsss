@@ -8,11 +8,20 @@ var SpeedManager = {
 
 var NoteManager = {
     speed:SpeedManager.getNoteUseTime(9.3),
-    getNotePositionX:function (t,startPos,finishPos){
-        return this.getX(t) * (this.getFinishPosX(finishPos) - this.getStartPosX(startPos)) + this.getStartPosX(startPos);
+    getX: function(t, startIdx, finishIdx) {
+        var s = this.getStartPosX(startIdx);
+        var f = this.getFinishPosX(finishIdx);
+        return s + (f - s) * t;
     },
-    getNotePositionY:function (t){
-        return this.getY(t) * (this.getFinishPosY() - this.getStartPosY()) + this.getStartPosY();
+    getY: function(t) {
+        var s = this.getStartPosY();
+        var f = this.getFinishPosY();
+        var j = s - 20.0 * (f - s) / 390.0;
+        var p = s + j - 2.0 * f;
+        return p * t * (1.0 - t) + (f - s) * t + s;
+    },
+    getScale: function(t) {
+        return t < 0.25 ? 0.3 * t / 0.25 : t < 1.0 ? 0.3 + 0.7 * (t - 0.25) / 0.75 : 1.0;
     },
     getStartPosX:function (i) {
         return 110 * (i - 1) + 260;
@@ -30,17 +39,6 @@ var NoteManager = {
         return Math.min(Math.max(0, time/this.speed + 1), 1.5);
     },
 
-    getX:function (t) {
-        return -0.319153853866737 * Math.pow(t, 5) + 0.833982546813786 * Math.pow(t, 4) - 0.323215452372096 * Math.pow(t, 3) - 1.034510116798630 * Math.pow(t, 2) + 1.842884775897800 * t;
-    },
-
-    getY:function (t) {
-        return -0.759639294381486 * Math.pow(t, 5) + 4.401309909531840 * Math.pow(t, 4) - 8.374126664741200 * Math.pow(t, 3) + 7.836102202563780 * Math.pow(t, 2) - 2.102836822655260 * t;
-    },
-
-    getScale:function (t) {
-        return -0.036629699490732 * Math.pow(t, 5) + 0.431047962163575 * Math.pow(t, 4) - 0.452487806673162 * Math.pow(t, 3) - 0.178201526687189 * Math.pow(t, 2) + 1.236315715326780 * t;
-    }
 };
 
 var InputManager = {
@@ -70,17 +68,18 @@ var Note = function(time,startPos,finishPos,noteType,longType,groupID,texture){
     this.sprite = new PIXI.Sprite(texture);
     this.sprite.visible = false;
     this.sprite.anchor.set(anchorList[noteType],0.5);
-    this.sprite.x = NoteManager.getNotePositionX(0,this.startPos,this.finishPos);
-    this.sprite.y = NoteManager.getNotePositionY(0);
+    this.sprite.x = NoteManager.getX(0,this.startPos,this.finishPos);
+    this.sprite.y = NoteManager.getY(0);
     this.t = 0;
     this.scale = 0;
 };
 
 Note.prototype = {
     setPosition:function (t){
+        var t2 = t / (t + 1) * 2;
         this.t = t;
-        this.sprite.x = NoteManager.getNotePositionX(t,this.startPos,this.finishPos);
-        this.sprite.y = NoteManager.getNotePositionY(t);
+        this.sprite.x = NoteManager.getX(t2, this.startPos, this.finishPos);
+        this.sprite.y = NoteManager.getY(t2);
         this.scale = NoteManager.getScale(t);
         this.sprite.scale.set(85/256*this.scale);
     },
@@ -127,8 +126,9 @@ LongMesh.prototype = {
         var t = 0;
         for(var j=0;j<LONGMESH_DIVISION+1;j++){
             var clipT = Math.min(Math.max(endT,t),beginT);
-            var x = NoteManager.getNotePositionX(clipT,this.beginNote.startPos,this.beginNote.finishPos);
-            var y = NoteManager.getNotePositionY(clipT);
+            var clipT2 = clipT / (clipT + 1) * 2;
+            var x = NoteManager.getX(clipT2,this.beginNote.startPos,this.beginNote.finishPos);
+            var y = NoteManager.getY(clipT2);
             var width = 85*NoteManager.getScale(clipT);
 
             this.mesh.vertices[j*4] = x-width/2;
