@@ -417,7 +417,7 @@ var WaitDisplay = function(){
         fontFamily: 'Arial',
         fontSize: 50,
         fontWeight:'bold', 
-        fill: 'black',
+        fill: 'white',
         align:'center'
     });
     this.text.anchor.set(0.5);
