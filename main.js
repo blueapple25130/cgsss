@@ -411,6 +411,33 @@ ResultDisplay.prototype = {
     }
 }
 
+
+var WaitDisplay = function(){
+    this.text = new PIXI.Text("Touch to Start", {
+        fontFamily: 'Arial',
+        fontSize: 50,
+        fontWeight:'bold', 
+        fill: 'black',
+        align:'center'
+    });
+    this.text.anchor.set(0.5);
+    this.text.position.set(480,270);
+}
+
+WaitDisplay.prototype = {
+    isShow:false,
+    show:function(){
+        this.isShow = true;
+        app.stage.addChild(this.text);
+    },
+    destroy:function(){
+        this.isShow = false;
+        app.stage.removeChild(this.text);
+    }
+}
+
+
+
 var JadgeTime = {
     perfect:60,
     great:80,
@@ -476,6 +503,7 @@ var judgeDrawer;
 var comboDrawer;
 
 var resultDisplay;
+var waitDisplay;
 
 var judge = {
     perfect:0,
@@ -503,6 +531,7 @@ function onAssetsLoaded(loader, res)
     comboDrawer.addChild();
     
     resultDisplay = new ResultDisplay(res['tex_result'].texture);
+    waitDisplay = new WaitDisplay();
 
     var longBuf = [false,false,false,false,false];
     var beatmap = loader.resources['json_map'].data;
@@ -590,15 +619,18 @@ function onAudioDecoded(res){
     tapSE = new WebAudio(res['audio_perfect']);
     flickSE = new WebAudio(res['audio_flick']);
 
-    app.view.addEventListener("touchstart",onDown);
-    app.view.addEventListener("touchmove",onMove);
-    app.view.addEventListener("touchend",onUp);
+    app.view.addEventListener("touchstart",onFingerDown);
+    app.view.addEventListener("touchmove",onFingerMove);
+    app.view.addEventListener("touchend",onFingerUp);
+    app.view.addEventListener("mousedown",onMouseDown);
+    app.view.addEventListener("mousemove",onMouseMove);
+    app.view.addEventListener("mouseup",onMouseUp);
     
     //ロード画面消去
     document.body.removeChild(document.getElementById("loading"));
     app.stage.visible = true;
 
-    music.play();
+    waitDisplay.show();
     update();
 }
 
@@ -664,158 +696,192 @@ function update(){
     requestAnimationFrame(update);
 }
 
-function onDown(e){
+
+function onMouseDown(e){
+    onDown(e.clientX/app.view.clientWidth*APP_WIDTH,0);
+}
+
+function onMouseUp(e){
+    onUp(e.clientX/app.view.clientWidth*APP_WIDTH,0);
+}
+
+function onMouseMove(e){
+    if((e.buttons & 0x0001) ? true : false)onMove(e.clientX/app.view.clientWidth*APP_WIDTH,0);
+}
+
+function onFingerDown(e){
+    if(waitDisplay.isShow){
+        waitDisplay.destroy();
+        music.play();
+    }
     for(var i=e.touches.length;i--;){
         var touch = e.touches[i];
         var x = touch.clientX/app.view.clientWidth*APP_WIDTH;
-        var y = touch.clientY/app.view.clientHeight*APP_HEIGHT;
+        //var y = touch.clientY/app.view.clientHeight*APP_HEIGHT;
         var id = touch.identifier;
-        bufx[id] = x;
-        var lane = InputManager.XtoLane(x);
-        var inputLane = noteList[lane];
-        LNMemory[id] = lane;
-        if(inputLane.length!=0){
-            if(inputLane[0].noteType<2&&inputLane[0].longType!=2){
-                var diff = Math.abs(inputLane[0].time-music.getTime());
-                if(diff<JadgeTime.perfect){
-                    //perfect
-                    tapSE.play();
-                    judgeDrawer.play(0);
-                    judge.perfect++;
-                    if(inputLane[0].longType==1)LNflag[lane] = true;
-                    ComboManager.addCombo();
-                    inputLane[0].destroy();
-                    inputLane.shift();
-                }else if(diff<JadgeTime.great){
-                    //great
-                    tapSE.play();
-                    judgeDrawer.play(1);
-                    judge.great++;
-                    if(inputLane[0].longType==1)LNflag[lane] = true;
-                    ComboManager.addCombo();
-                    inputLane[0].destroy();
-                    inputLane.shift();
-                }else if(diff<JadgeTime.good){
-                    //good
-                    tapSE.play();
-                    judgeDrawer.play(2);
-                    judge.good++;
-                    if(inputLane[0].longType==1)LNflag[lane] = true;
-                    ComboManager.resetCombo();
-                    inputLane[0].destroy();
-                    inputLane.shift();
-                }else if(diff<JadgeTime.bad){
-                    //bad
-                    tapSE.play();
-                    judgeDrawer.play(3);
-                    judge.bad++;
-                    if(inputLane[0].longType==1)LNflag[lane] = true;
-                    ComboManager.resetCombo();
-                    inputLane[0].destroy();
-                    inputLane.shift();
-                }   
-            }
-        }
+        onDown(x,id);
     }
 }
 
-function onUp(e){
+function onFingerUp(e){
     for(var i=e.changedTouches.length;i--;){
         var touch = e.changedTouches[i];
         var x = touch.clientX/app.view.clientWidth*APP_WIDTH;
-        var y = touch.clientY/app.view.clientHeight*APP_HEIGHT;
+        //var y = touch.clientY/app.view.clientHeight*APP_HEIGHT;
         var id = touch.identifier;
-        bufx[id] = x;
-        var lane = LNMemory[id];
-        var inputLane = noteList[lane];
-        if(inputLane.length!=0){
-            if(inputLane[0].longType==2&&inputLane[0].noteType<2){
-                var diff = Math.abs(inputLane[0].time-music.getTime());
-                if(diff<JadgeTime.perfect){
-                    //perfect
-                    tapSE.play();
-                    judgeDrawer.play(0);
-                    judge.perfect++;
-                    LNflag[lane] = false;
-                    ComboManager.addCombo();
-                    inputLane[0].destroy();
-                    inputLane.shift();
-                }else if(diff<JadgeTime.great){
-                    //great
-                    tapSE.play();
-                    judgeDrawer.play(1);
-                    judge.great++;
-                    LNflag[lane] = false;
-                    ComboManager.addCombo();
-                    inputLane[0].destroy();
-                    inputLane.shift();
-                }else if(diff<JadgeTime.good){
-                    //good
-                    tapSE.play();
-                    judgeDrawer.play(2);
-                    judge.good++;
-                    LNflag[lane] = false;
-                    ComboManager.resetCombo();
-                    inputLane[0].destroy();
-                    inputLane.shift();
-                }else if(diff<JadgeTime.bad){
-                    //bad
-                    tapSE.play();
-                    judgeDrawer.play(3);
-                    judge.bad++;
-                    LNflag[lane] = false;
-                    ComboManager.resetCombo();
-                    inputLane[0].destroy();
-                    inputLane.shift();
-                }   
-            }
-        }
-        if(LNflag[lane]){
-            ComboManager.resetCombo();
-            judgeDrawer.play(4);
-            judge.miss++;
-            LNflag[lane] = false;
-            inputLane[0].destroy();
-            inputLane.shift();
+        onUp(x,id);
+    }
+}
+
+function onFingerMove(e){
+    for(var i=e.touches.length;i--;){
+        var touch = e.touches[i];
+        var x = touch.clientX/app.view.clientWidth*APP_WIDTH;
+        //var y = touch.clientY/app.view.clientHeight*APP_HEIGHT;
+        var id = touch.identifier;
+        onMove(x,id);
+    }
+}
+
+function onDown(x,id){
+    if(waitDisplay.isShow){
+        waitDisplay.destroy();
+        music.play();
+    }
+    bufx[id] = x;
+    var lane = InputManager.XtoLane(x);
+    var inputLane = noteList[lane];
+    LNMemory[id] = lane;
+    if(inputLane.length!=0){
+        if(inputLane[0].noteType<2&&inputLane[0].longType!=2){
+            var diff = Math.abs(inputLane[0].time-music.getTime());
+            if(diff<JadgeTime.perfect){
+                //perfect
+                tapSE.play();
+                judgeDrawer.play(0);
+                judge.perfect++;
+                if(inputLane[0].longType==1)LNflag[lane] = true;
+                ComboManager.addCombo();
+                inputLane[0].destroy();
+                inputLane.shift();
+            }else if(diff<JadgeTime.great){
+                //great
+                tapSE.play();
+                judgeDrawer.play(1);
+                judge.great++;
+                if(inputLane[0].longType==1)LNflag[lane] = true;
+                ComboManager.addCombo();
+                inputLane[0].destroy();
+                inputLane.shift();
+            }else if(diff<JadgeTime.good){
+                //good
+                tapSE.play();
+                judgeDrawer.play(2);
+                judge.good++;
+                if(inputLane[0].longType==1)LNflag[lane] = true;
+                ComboManager.resetCombo();
+                inputLane[0].destroy();
+                inputLane.shift();
+            }else if(diff<JadgeTime.bad){
+                //bad
+                tapSE.play();
+                judgeDrawer.play(3);
+                judge.bad++;
+                if(inputLane[0].longType==1)LNflag[lane] = true;
+                ComboManager.resetCombo();
+                inputLane[0].destroy();
+                inputLane.shift();
+            }   
         }
     }
 }
 
-function onMove(e){
-    for(var i=e.touches.length;i--;){
-        var touch = e.touches[i];
-        var x = touch.clientX/app.view.clientWidth*APP_WIDTH;
-        var y = touch.clientY/app.view.clientHeight*APP_HEIGHT;
-        var id = touch.identifier;
-        var dir = -1;
-        var sub = x - bufx[id];
-        
-        var lane = InputManager.XtoLane(bufx[id]);
-        
-        if(sub<-15){
-            dir = 2;
-            bufx[id] = x;
-        }else if(sub>15){
-            dir = 3;
-            bufx[id] = x;
+function onUp(x,id){
+    bufx[id] = x;
+    var lane = LNMemory[id];
+    var inputLane = noteList[lane];
+    if(inputLane.length!=0){
+        if(inputLane[0].longType==2&&inputLane[0].noteType<2){
+            var diff = Math.abs(inputLane[0].time-music.getTime());
+            if(diff<JadgeTime.perfect){
+                //perfect
+                tapSE.play();
+                judgeDrawer.play(0);
+                judge.perfect++;
+                LNflag[lane] = false;
+                ComboManager.addCombo();
+                inputLane[0].destroy();
+                inputLane.shift();
+            }else if(diff<JadgeTime.great){
+                //great
+                tapSE.play();
+                judgeDrawer.play(1);
+                judge.great++;
+                LNflag[lane] = false;
+                ComboManager.addCombo();
+                inputLane[0].destroy();
+                inputLane.shift();
+            }else if(diff<JadgeTime.good){
+                //good
+                tapSE.play();
+                judgeDrawer.play(2);
+                judge.good++;
+                LNflag[lane] = false;
+                ComboManager.resetCombo();
+                inputLane[0].destroy();
+                inputLane.shift();
+            }else if(diff<JadgeTime.bad){
+                //bad
+                tapSE.play();
+                judgeDrawer.play(3);
+                judge.bad++;
+                LNflag[lane] = false;
+                ComboManager.resetCombo();
+                inputLane[0].destroy();
+                inputLane.shift();
+            }   
         }
-
-        var inputLane = noteList[lane];
-        if(inputLane.length!=0){
-            if(inputLane[0].noteType==dir){
-                var diff = Math.abs(inputLane[0].time-music.getTime());
-                if(diff<JadgeTime.bad){
-                    if(inputLane[0].longType==2)LNflag[lane] = false;
-                    flickSE.play();
-                    judgeDrawer.play(0);
-                    judge.perfect++;
-                    ComboManager.addCombo();
-                    inputLane[0].destroy();
-                    inputLane.shift();
-                }   
-            }
-        }   
     }
+    if(LNflag[lane]){
+        ComboManager.resetCombo();
+        judgeDrawer.play(4);
+        judge.miss++;
+        LNflag[lane] = false;
+        inputLane[0].destroy();
+        inputLane.shift();
+    }
+}
+
+
+function onMove(x,id){
+    var dir = -1;
+    var sub = x - bufx[id];
+
+    var lane = InputManager.XtoLane(bufx[id]);
+
+    if(sub<-15){
+        dir = 2;
+        bufx[id] = x;
+    }else if(sub>15){
+        dir = 3;
+        bufx[id] = x;
+    }
+
+    var inputLane = noteList[lane];
+    if(inputLane.length!=0){
+        if(inputLane[0].noteType==dir){
+            var diff = Math.abs(inputLane[0].time-music.getTime());
+            if(diff<JadgeTime.bad){
+                if(inputLane[0].longType==2)LNflag[lane] = false;
+                flickSE.play();
+                judgeDrawer.play(0);
+                judge.perfect++;
+                ComboManager.addCombo();
+                inputLane[0].destroy();
+                inputLane.shift();
+            }   
+        }
+    }  
 }
 
 function onResize() {
