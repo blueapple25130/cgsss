@@ -482,7 +482,7 @@ function onMapLoaded(loader,res){
         .add('tex_judge', 'asset/image/judge.png')
         .add('tex_combo', 'asset/image/combo.png')
         .add('tex_combonum', 'asset/image/combo_number.png')
-        .add('tex_result', 'asset/image/result_c.png')
+        .add('tex_result', 'asset/image/result.png')
         .add('audio_perfect', "asset/sound/perfect.mp3")
         .add('audio_flick', "asset/sound/flick.mp3")
         .add('audio_music', "music/"+res['json_map'].data.music)
