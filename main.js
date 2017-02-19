@@ -715,10 +715,6 @@ function onMouseMove(e){
 }
 
 function onFingerDown(e){
-    if(waitDisplay.isShow){
-        waitDisplay.destroy();
-        music.play();
-    }
     for(var i=e.touches.length;i--;){
         var touch = e.touches[i];
         var x = touch.clientX/app.view.clientWidth*APP_WIDTH;
