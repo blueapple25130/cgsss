@@ -464,11 +464,11 @@ PIXI.loaders.Resource.setExtensionXhrType("wav", PIXI.loaders.Resource.XHR_RESPO
 PIXI.loaders.Resource.setExtensionLoadType("wav", PIXI.loaders.Resource.XHR_RESPONSE_TYPE.BUFFER);
 
 PIXI.loader
-    .add('json_map', "beatmap/"+MAP_FILENAME)
+    .add('json_map', "beatmap/"+PARAM_FILENAME)
     .load(onMapLoaded);
 
 function onMapLoaded(loader,res){
-    NoteManager.speed = SpeedManager.getNoteUseTime(res['json_map'].data.speed);
+    NoteManager.speed = SpeedManager.getNoteUseTime(PARAM_SPEED||res['json_map'].data.speed);
     MUSIC_TITLE = res['json_map'].data.title;
     loader
         .add('tex_back', 'asset/image/release_bg.png')
@@ -531,7 +531,8 @@ function onAssetsLoaded(loader, res)
     comboDrawer.addChild();
     
     resultDisplay = new ResultDisplay(res['tex_result'].texture);
-    waitDisplay = new WaitDisplay();
+    
+    if(!PARAM_ISSKIP)waitDisplay = new WaitDisplay();
 
     var longBuf = [false,false,false,false,false];
     var beatmap = loader.resources['json_map'].data;
@@ -630,7 +631,11 @@ function onAudioDecoded(res){
     document.body.removeChild(document.getElementById("loading"));
     app.stage.visible = true;
 
-    waitDisplay.show();
+    if(PARAM_ISSKIP){
+        music.play();
+    }else{
+        waitDisplay.show();
+    }
     update();
 }
 
@@ -744,7 +749,7 @@ function onFingerMove(e){
 }
 
 function onDown(x,id){
-    if(waitDisplay.isShow){
+    if(!PARAM_ISSKIP&&waitDisplay.isShow){
         waitDisplay.destroy();
         music.play();
     }

@@ -13,7 +13,11 @@
     <body>
         <div id="loading"><img src="load.gif" alt="Loading..." /></div>
         <?php
-        echo '<script>var MAP_FILENAME = "'.$_GET['map'].'"</script>';
+        echo '<script>'.
+            'var PARAM_FILENAME = "'.$_GET['map'].'";'.PHP_EOL.
+            'var PARAM_SPEED = '.(isset($_GET['speed'])?$_GET['speed']:'undefined').';'.PHP_EOL.
+            'var PARAM_ISSKIP = '.(isset($_GET['skip'])?($_GET['skip']!=0?'true':'false'):'false').';'.PHP_EOL.
+            '</script>';
         ?>
         <script src="main.js"></script>
     </body>    
