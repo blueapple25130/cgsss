@@ -252,6 +252,15 @@ Line.prototype = {
     }
 }
 
+var JudgeType = {
+    PERFECT: 0,
+    GREAT: 1,
+    NICE: 2,
+    BAD: 3,
+    MISS: 4,
+    
+    _SIZEOF: 5,
+};
 
 var JudgeDrawer = function (texture){
     this.frame = 0;
@@ -292,11 +301,92 @@ JudgeDrawer.prototype = {
     }
 };
 
-var ComboManager = {
-    digitWidth:66,
-    num2digits:function (num){
+var NumberUtility = {
+    toDigits: function(num) {
         return String(num).split('').map(function (e) { return Number(e); });
     },
+}
+
+// スコア計算
+var ScoreCalculator = function(notesCount) {
+    this.RateList = [1.0, 0.7, 0.5, 0.3, 0.1];
+    this.addScore = 1000000 / notesCount;
+};
+ScoreCalculator.prototype = {
+    calc: function(judgeType) {
+        return this.addScore * this.RateList[judgeType];
+    }
+};
+
+// スコアカウンタ(雑)
+var ScoreCounter = function() {
+    var observer;
+    this.value = 0;
+};
+ScoreCounter.prototype = {
+    setObserver: function(observer) {
+        this.observer = observer;
+    },
+    add: function(amount) {
+        this.value += amount;
+        if (this.observer) { this.observer.onValueChanged(this.value); }
+    },
+};
+
+// スコア表示 - ヘルパ
+var ScoreDisplayHelper = {
+    NumberWidth: 22,
+    NumberHeight: 30,
+    
+    rects: [],
+    init: function() {
+        for (var i = 0; i < 20; i++) {
+            var x = i % 10;
+            var y = parseInt(i / 10);
+            this.rects[i] = new PIXI.Rectangle(x * this.NumberWidth, y * this.NumberHeight, this.NumberWidth, this.NumberHeight);
+        }
+    },
+};
+ScoreDisplayHelper.init();
+
+// スコア表示
+var ScoreDisplay = function(texText, texNumber) {    
+    this.renderTexture = PIXI.RenderTexture.create(80 + 7 * ScoreDisplayHelper.NumberWidth, ScoreDisplayHelper.NumberHeight);
+    this.sprite = new PIXI.Sprite(this.renderTexture);
+    this.sprite.position.set(32, 20);
+    this.spriteText = new PIXI.Sprite(texText);
+    this.spriteText.position.set(0, 6);
+    this.spriteNumber = new PIXI.extras.TilingSprite(texNumber, ScoreDisplayHelper.NumberWidth, ScoreDisplayHelper.NumberHeight);
+};
+ScoreDisplay.prototype = {
+    updateValue: function(value) {
+        // テキスト
+        app.renderer.render(this.spriteText, this.renderTexture, true);
+        
+        // 数字
+        var posx = 80;
+        var posy = 0;
+        var digits = NumberUtility.toDigits(value);
+        for (var i = 0; i < 7 - digits.length; i++) {
+            this.spriteNumber.texture.frame = ScoreDisplayHelper.rects[10];
+            this.spriteNumber.position.set(posx, posy);
+            app.renderer.render(this.spriteNumber, this.renderTexture, false);
+            posx += ScoreDisplayHelper.NumberWidth;
+        }
+        for (var i = 0; i < digits.length; i++) {
+            this.spriteNumber.texture.frame = ScoreDisplayHelper.rects[ digits[i] ];
+            this.spriteNumber.position.set(posx, posy);
+            app.renderer.render(this.spriteNumber, this.renderTexture, false);
+            posx += ScoreDisplayHelper.NumberWidth;
+        }
+    },
+    onValueChanged : function(value) {
+        this.updateValue(parseInt(value));
+    },
+};
+
+var ComboManager = {
+    digitWidth:66,
     digitNum2x:function (length){
         var digits = [];
         var center = Math.floor(length/2);
@@ -342,7 +432,7 @@ ComboDrawer.prototype = {
     update:function (){
         //コンボ数に変化がある場合のみ処理
         if(ComboManager.combo!=this.comboBuffer){
-            var digits = ComboManager.num2digits(ComboManager.combo);
+            var digits = NumberUtility.toDigits(ComboManager.combo);
             var positions = ComboManager.digitNum2x(digits.length);
             //テクスチャのクリア
             app.renderer.render(this.emptyObject, this.renderTexture,true);
@@ -471,18 +561,20 @@ function onMapLoaded(loader,res){
     NoteManager.speed = SpeedManager.getNoteUseTime(PARAM_SPEED||res['json_map'].data.speed);
     MUSIC_TITLE = res['json_map'].data.title;
     loader
-        .add('tex_back', 'asset/image/release_bg.png')
-        .add('tex_tap', 'asset/image/tap.png')
-        .add('tex_long', 'asset/image/long.png')
-        .add('tex_flick0', 'asset/image/Lflick.png')
-        .add('tex_flick1', 'asset/image/Rflick.png')
-        .add('tex_bg', 'asset/image/release_bg.png')
-        .add('tex_none', 'asset/image/none.bmp')
-        .add('tex_line', 'asset/image/line.png')
-        .add('tex_judge', 'asset/image/judge.png')
-        .add('tex_combo', 'asset/image/combo.png')
-        .add('tex_combonum', 'asset/image/combo_number.png')
-        .add('tex_result', 'asset/image/result.png')
+        .add('tex_back', "asset/image/release_bg.png")
+        .add('tex_tap', "asset/image/tap.png")
+        .add('tex_long', "asset/image/long.png")
+        .add('tex_flick0', "asset/image/Lflick.png")
+        .add('tex_flick1', "asset/image/Rflick.png")
+        .add('tex_bg', "asset/image/release_bg.png")
+        .add('tex_none', "asset/image/none.bmp")
+        .add('tex_line', "asset/image/line.png")
+        .add('tex_judge', "asset/image/judge.png")
+        .add('tex_score_text', "asset/image/score_text.png")
+        .add('tex_score_number', "asset/image/score_number.png")
+        .add('tex_combo', "asset/image/combo.png")
+        .add('tex_combonum', "asset/image/combo_number.png")
+        .add('tex_result', "asset/image/result.png")
         .add('audio_perfect', "asset/sound/perfect.mp3")
         .add('audio_flick', "asset/sound/flick.mp3")
         .add('audio_music', "music/"+res['json_map'].data.music)
@@ -500,10 +592,15 @@ var longMeshList = [];
 var flickMeshList = [];
 var lineList = [];
 var judgeDrawer;
+var scoreDisplay;
 var comboDrawer;
 
 var resultDisplay;
 var waitDisplay;
+
+//etc
+var scoreCalculator;
+var scoreCounter = new ScoreCounter();
 
 var judge = {
     perfect:0,
@@ -524,10 +621,16 @@ function onAssetsLoaded(loader, res)
     var bg = new PIXI.Sprite(res['tex_bg'].texture);
     app.stage.addChild(bg);
 
+    // スコア表示
+    scoreDisplay = new ScoreDisplay(res['tex_score_text'].texture, res['tex_score_number'].texture);
+    scoreDisplay.updateValue(0);   // スクリーン初期化
+    scoreCounter.setObserver(scoreDisplay);
+    app.stage.addChild(scoreDisplay.sprite);
+
     judgeDrawer = new JudgeDrawer(res['tex_judge'].texture);
     judgeDrawer.addChild();
-    
-    comboDrawer = new ComboDrawer(res['tex_combo'].texture,res['tex_combonum'].texture);
+        
+    comboDrawer = new ComboDrawer(res['tex_combo'].texture, res['tex_combonum'].texture);
     comboDrawer.addChild();
     
     resultDisplay = new ResultDisplay(res['tex_result'].texture);
@@ -550,7 +653,7 @@ function onAssetsLoaded(loader, res)
         }
         noteList[beatmap.notes[i].finish-1].push(new Note(beatmap.notes[i].time*1000+beatmap.offset*1000,beatmap.notes[i].start,beatmap.notes[i].finish,beatmap.notes[i].type,lnType,beatmap.notes[i].group,res[typeList[lnType==2&&beatmap.notes[i].type==0?1:beatmap.notes[i].type]].texture));   
     }
-    
+        
     var beginNote;
     for(var i=5;i--;){
         for(var j=0;j<noteList[i].length;j++){
@@ -606,6 +709,10 @@ function onAssetsLoaded(loader, res)
             noteList[i][j].addChild();
         }
     }
+    
+    // いい場所が無かったので適当に追加
+    scoreCalculator = new ScoreCalculator(beatmap.notes.length);
+    
     //オーディオのデコード
     new WebAudioDecoder()
         .add('audio_music',res['audio_music'].data)
@@ -615,7 +722,6 @@ function onAssetsLoaded(loader, res)
 }
 
 function onAudioDecoded(res){
-    
     music = new WebAudio(res['audio_music']);
     tapSE = new WebAudio(res['audio_perfect']);
     flickSE = new WebAudio(res['audio_flick']);
@@ -763,6 +869,7 @@ function onDown(x,id){
                 judge.perfect++;
                 if(inputLane[0].longType==1)LNflag[lane] = true;
                 ComboManager.addCombo();
+                scoreCounter.add( scoreCalculator.calc(JudgeType.PERFECT) );
                 inputLane[0].destroy();
                 inputLane.shift();
             }else if(diff<JadgeTime.great){
@@ -772,6 +879,7 @@ function onDown(x,id){
                 judge.great++;
                 if(inputLane[0].longType==1)LNflag[lane] = true;
                 ComboManager.addCombo();
+                scoreCounter.add( scoreCalculator.calc(JudgeType.GREAT) );
                 inputLane[0].destroy();
                 inputLane.shift();
             }else if(diff<JadgeTime.good){
@@ -792,7 +900,7 @@ function onDown(x,id){
                 ComboManager.resetCombo();
                 inputLane[0].destroy();
                 inputLane.shift();
-            }   
+            }
         }
     }
 }
@@ -811,6 +919,7 @@ function onUp(x,id){
                 judge.perfect++;
                 LNflag[lane] = false;
                 ComboManager.addCombo();
+                scoreCounter.add( scoreCalculator.calc(JudgeType.PERFECT) );
                 inputLane[0].destroy();
                 inputLane.shift();
             }else if(diff<JadgeTime.great){
@@ -820,6 +929,7 @@ function onUp(x,id){
                 judge.great++;
                 LNflag[lane] = false;
                 ComboManager.addCombo();
+                scoreCounter.add( scoreCalculator.calc(JudgeType.GREAT) );
                 inputLane[0].destroy();
                 inputLane.shift();
             }else if(diff<JadgeTime.good){
@@ -829,6 +939,7 @@ function onUp(x,id){
                 judge.good++;
                 LNflag[lane] = false;
                 ComboManager.resetCombo();
+                scoreCounter.add( scoreCalculator.calc(JudgeType.NICE) );
                 inputLane[0].destroy();
                 inputLane.shift();
             }else if(diff<JadgeTime.bad){
@@ -838,6 +949,7 @@ function onUp(x,id){
                 judge.bad++;
                 LNflag[lane] = false;
                 ComboManager.resetCombo();
+                scoreCounter.add( scoreCalculator.calc(JudgeType.BAD) );
                 inputLane[0].destroy();
                 inputLane.shift();
             }   
@@ -878,6 +990,7 @@ function onMove(x,id){
                 judgeDrawer.play(0);
                 judge.perfect++;
                 ComboManager.addCombo();
+                scoreCounter.add( scoreCalculator.calc(JudgeType.PERFECT) );
                 inputLane[0].destroy();
                 inputLane.shift();
             }   
@@ -886,14 +999,10 @@ function onMove(x,id){
 }
 
 function onResize() {
-    var ratio
     var ratioWidth = window.innerWidth / APP_WIDTH;
     var ratioHeight = window.innerHeight / APP_HEIGHT;
-    if (ratioWidth < ratioHeight) {
-        ratio = ratioWidth;
-    } else {
-        ratio = ratioHeight;
-    }
+    var ratio = Math.min(ratioWidth, ratioHeight);
+
     app.view.style.width = ~~(APP_WIDTH * ratio) + 'px';
     app.view.style.height = ~~(APP_HEIGHT * ratio) + 'px';
     clientWidth = app.view.clientWidth;
