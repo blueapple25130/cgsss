@@ -860,10 +860,10 @@ function onMove(x,id){
 
     var lane = InputManager.XtoLane(bufx[id]);
 
-    if(sub<-15){
+    if(sub<-10){
         dir = 2;
         bufx[id] = x;
-    }else if(sub>15){
+    }else if(sub>10){
         dir = 3;
         bufx[id] = x;
     }
